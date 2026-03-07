@@ -1,5 +1,9 @@
 package gonsole
 
+import (
+	"github.com/hajimehoshi/ebiten/v2"
+)
+
 const (
 	ScreenWidth  = 320
 	ScreenHeight = 240
@@ -169,4 +173,71 @@ func (c *Console) SetPattern(index int, data []byte) {
 func abs(x int) int {
 	if x < 0 { return -x }
 	return x
+}
+
+// Draw implements the ebiten.Game interface
+func (c *Console) Draw(screen *ebiten.Image) {
+	// 1. Render Framebuffer (Background)
+	fb := c.VRAM[AddrFramebuffer : AddrFramebuffer+ScreenWidth*ScreenHeight]
+	img := ebiten.NewImage(ScreenWidth, ScreenHeight)
+	pixels := make([]byte, ScreenWidth*ScreenHeight*4)
+	
+	palette := c.VRAM[AddrPalette : AddrPalette+256*3]
+
+	for i, idx := range fb {
+		pAddr := int(idx) * 3
+		pixels[i*4] = palette[pAddr]
+		pixels[i*4+1] = palette[pAddr+1]
+		pixels[i*4+2] = palette[pAddr+2]
+		pixels[i*4+3] = 255
+	}
+	img.WritePixels(pixels)
+	screen.DrawImage(img, nil)
+
+	// 2. Render Sprites from OAM
+	for i := 0; i < 256; i++ {
+		addr := AddrOAM + i*4
+		x := int(c.VRAM[addr])
+		y := int(c.VRAM[addr+1])
+		patternID := int(c.VRAM[addr+2])
+		// flags := c.VRAM[addr+3] // To be used later
+
+		if x == 0 && y == 0 && patternID == 0 && i > 0 {
+			continue // Skip unused sprites
+		}
+
+		// Draw 8x8 sprite
+		patternAddr := AddrPatternData + patternID*64
+		spriteImg := ebiten.NewImage(8, 8)
+		spritePixels := make([]byte, 8*8*4)
+		for p := 0; p < 64; p++ {
+			idx := c.VRAM[patternAddr+p]
+			if idx == 0 { continue } // Transparency for index 0
+			
+			pAddr := int(idx) * 3
+			spritePixels[p*4] = palette[pAddr]
+			spritePixels[p*4+1] = palette[pAddr+1]
+			spritePixels[p*4+2] = palette[pAddr+2]
+			spritePixels[p*4+3] = 255
+		}
+		spriteImg.WritePixels(spritePixels)
+		
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x), float64(y))
+		screen.DrawImage(spriteImg, op)
+	}
+}
+
+// Layout implements the ebiten.Game interface
+func (c *Console) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return ScreenWidth, ScreenHeight
+}
+
+// Run starts the virtual console with the given console state
+func Run(c *Console) error {
+	ebiten.SetWindowTitle("8-Bit Virtual Console")
+	ebiten.SetWindowSize(ScreenWidth*2, ScreenHeight*2)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+
+	return ebiten.RunGame(c)
 }
