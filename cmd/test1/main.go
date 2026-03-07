@@ -11,7 +11,23 @@ func main() {
 
 	// Demo Movement Logic hooked into Console.Update
 	c.UpdateFunc = func() error {
-		for i := 0; i < 10; i++ {
+		// Player-controlled sprite (index 0)
+		x, y, patternID, flags := c.GetSprite(0)
+		if c.IsPressed(gonsole.ButtonUp) { y -= 1 }
+		if c.IsPressed(gonsole.ButtonDown) { y += 1 }
+		if c.IsPressed(gonsole.ButtonLeft) { x -= 1 }
+		if c.IsPressed(gonsole.ButtonRight) { x += 1 }
+		
+		// Boundary check for player
+		if x < 0 { x = 0 }
+		if x > gonsole.ScreenWidth-8 { x = gonsole.ScreenWidth-8 }
+		if y < 0 { y = 0 }
+		if y > gonsole.ScreenHeight-8 { y = gonsole.ScreenHeight-8 }
+		
+		c.SetSprite(0, x, y, patternID, flags)
+
+		// Other sprites (1-9) move automatically
+		for i := 1; i < 10; i++ {
 			x, y, patternID, flags := c.GetSprite(i)
 			x = (x + 1) % gonsole.ScreenWidth
 			y = (y + 1) % gonsole.ScreenHeight

@@ -16,8 +16,20 @@ const (
 	AddrPalette     = 0x17000 // 256 * 3 bytes (RGB)
 )
 
+const (
+	ButtonUp    = 1 << 0
+	ButtonDown  = 1 << 1
+	ButtonLeft  = 1 << 2
+	ButtonRight = 1 << 3
+	ButtonA     = 1 << 4
+	ButtonB     = 1 << 5
+	ButtonStart = 1 << 6
+	ButtonSelect = 1 << 7
+)
+
 type Console struct {
 	VRAM       []byte
+	Buttons    byte
 	UpdateFunc func() error
 }
 
@@ -30,10 +42,39 @@ func NewConsole() *Console {
 
 // Update handles logic (to be expanded with stack-based VM)
 func (c *Console) Update() error {
+	c.pollInputs()
 	if c.UpdateFunc != nil {
 		return c.UpdateFunc()
 	}
 	return nil
+}
+
+func (c *Console) pollInputs() {
+	var b byte
+	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
+		b |= ButtonUp
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
+		b |= ButtonDown
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		b |= ButtonLeft
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
+		b |= ButtonRight
+	}
+	if ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyJ) {
+		b |= ButtonA
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeyK) {
+		b |= ButtonB
+	}
+	c.Buttons = b
+}
+
+// IsPressed returns true if the given button is currently pressed
+func (c *Console) IsPressed(btn byte) bool {
+	return (c.Buttons & btn) != 0
 }
 
 // SetPixel sets the color index at (x, y)
@@ -135,9 +176,15 @@ func (c *Console) SetSprite(index int, x, y int, patternID byte, flags byte) {
 		return
 	}
 	addr := AddrOAM + index*4
-	c.VRAM[addr] = byte(x)
-	c.VRAM[addr+1] = byte(y)
+	c.VRAM[addr] = byte(x & 0xFF)
+	c.VRAM[addr+1] = byte(y & 0xFF)
 	c.VRAM[addr+2] = patternID
+	// Use bit 0 of flags for the 9th bit of X
+	if x > 255 {
+		flags |= 0x01
+	} else {
+		flags &= 0xFE
+	}
 	c.VRAM[addr+3] = flags
 }
 
@@ -147,7 +194,16 @@ func (c *Console) GetSprite(index int) (x, y int, patternID byte, flags byte) {
 		return 0, 0, 0, 0
 	}
 	addr := AddrOAM + index*4
-	return int(c.VRAM[addr]), int(c.VRAM[addr+1]), c.VRAM[addr+2], c.VRAM[addr+3]
+	x = int(c.VRAM[addr])
+	y = int(c.VRAM[addr+1])
+	patternID = c.VRAM[addr+2]
+	flags = c.VRAM[addr+3]
+	
+	// Check 9th bit of X in flags
+	if (flags & 0x01) != 0 {
+		x += 256
+	}
+	return x, y, patternID, flags
 }
 
 // SetPalette updates a single palette entry
@@ -196,18 +252,14 @@ func (c *Console) Draw(screen *ebiten.Image) {
 
 	// 2. Render Sprites from OAM
 	for i := 0; i < 256; i++ {
-		addr := AddrOAM + i*4
-		x := int(c.VRAM[addr])
-		y := int(c.VRAM[addr+1])
-		patternID := int(c.VRAM[addr+2])
-		// flags := c.VRAM[addr+3] // To be used later
+		x, y, patternID, _ := c.GetSprite(i)
 
 		if x == 0 && y == 0 && patternID == 0 && i > 0 {
 			continue // Skip unused sprites
 		}
 
 		// Draw 8x8 sprite
-		patternAddr := AddrPatternData + patternID*64
+		patternAddr := AddrPatternData + int(patternID)*64
 		spriteImg := ebiten.NewImage(8, 8)
 		spritePixels := make([]byte, 8*8*4)
 		for p := 0; p < 64; p++ {
