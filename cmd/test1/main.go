@@ -6,33 +6,86 @@ import (
 	"aymanhs/gonsole"
 )
 
+// cursorArrow is the default mouse cursor — a top-left pointing arrow.
+// Colors: 7=white (body), 5=dark grey (inner shadow). 0=transparent.
+var cursorArrow = [64]byte{
+	7, 0, 0, 0, 0, 0, 0, 0,
+	7, 7, 0, 0, 0, 0, 0, 0,
+	7, 5, 7, 0, 0, 0, 0, 0,
+	7, 5, 5, 7, 0, 0, 0, 0,
+	7, 5, 5, 5, 7, 0, 0, 0,
+	7, 7, 5, 0, 0, 0, 0, 0,
+	0, 7, 5, 7, 0, 0, 0, 0,
+	0, 0, 7, 0, 0, 0, 0, 0,
+}
+
+// cursorClick is shown while any mouse button is held — a diamond cross.
+// Colors: 9=orange (body), 5=dark grey (detail). 0=transparent.
+var cursorClick = [64]byte{
+	0, 0, 9, 0, 0, 0, 0, 0,
+	0, 9, 5, 9, 0, 0, 0, 0,
+	9, 5, 9, 5, 9, 0, 0, 0,
+	0, 9, 5, 9, 0, 0, 0, 0,
+	0, 0, 9, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+}
+
 func main() {
 	c := gonsole.NewConsole()
 
 	// Demo Movement Logic hooked into Console.Update
-	c.UpdateFunc = func() error {
+	c.UpdateFunc = func(frame, ms uint64) error {
 		// Player-controlled sprite (index 0)
-		x, y, patternID, flags := c.GetSprite(0)
-		if c.IsPressed(gonsole.ButtonUp) { y -= 1 }
-		if c.IsPressed(gonsole.ButtonDown) { y += 1 }
-		if c.IsPressed(gonsole.ButtonLeft) { x -= 1 }
-		if c.IsPressed(gonsole.ButtonRight) { x += 1 }
-		
+		s := c.GetSprite(0)
+		if c.IsPressed(gonsole.ButtonUp) {
+			s.Y--
+		}
+		if c.IsPressed(gonsole.ButtonDown) {
+			s.Y++
+		}
+		if c.IsPressed(gonsole.ButtonLeft) {
+			s.X--
+		}
+		if c.IsPressed(gonsole.ButtonRight) {
+			s.X++
+		}
+
 		// Boundary check for player
-		if x < 0 { x = 0 }
-		if x > gonsole.ScreenWidth-8 { x = gonsole.ScreenWidth-8 }
-		if y < 0 { y = 0 }
-		if y > gonsole.ScreenHeight-8 { y = gonsole.ScreenHeight-8 }
-		
-		c.SetSprite(0, x, y, patternID, flags)
+		if s.X < 0 {
+			s.X = 0
+		}
+		if int(s.X) > gonsole.ScreenWidth-8 {
+			s.X = gonsole.ScreenWidth - 8
+		}
+		if s.Y < 0 {
+			s.Y = 0
+		}
+		if int(s.Y) > gonsole.ScreenHeight-8 {
+			s.Y = gonsole.ScreenHeight - 8
+		}
+		c.SetSprite(0, s)
 
 		// Other sprites (1-9) move automatically
 		for i := 1; i < 10; i++ {
-			x, y, patternID, flags := c.GetSprite(i)
-			x = (x + 1) % gonsole.ScreenWidth
-			y = (y + 1) % gonsole.ScreenHeight
-			c.SetSprite(i, x, y, patternID, flags)
+			s := c.GetSprite(i)
+			s.X = (s.X + 1) % gonsole.ScreenWidth
+			s.Y = (s.Y + 1) % gonsole.ScreenHeight
+			c.SetSprite(i, s)
 		}
+		// Mouse cursor sprite (slot 10) — follows mouse, changes shape on click
+		mx, my := c.MousePos()
+		cursor := c.GetSprite(10)
+		cursor.X = int16(mx - 8)
+		cursor.Y = int16(my - 8)
+		c.SetSprite(10, cursor)
+		if c.MousePressed(gonsole.MouseButtonLeft) || c.MousePressed(gonsole.MouseButtonRight) {
+			c.SetSpriteData(10, cursorClick[:])
+		} else {
+			c.SetSpriteData(10, cursorArrow[:])
+		}
+
 		return nil
 	}
 
@@ -78,44 +131,38 @@ func setupDemo(c *gonsole.Console) {
 		},
 	}
 
-	for id, p := range patterns {
-		patternData := make([]byte, 64)
-		for i, val := range p {
-			colorIdx := byte(0)
-			if val > 0 {
-				colorIdx = byte(id + 1)
-			}
-			patternData[i] = colorIdx
-		}
-		c.SetPattern(id, patternData)
-	}
-
-	// Palette
-	c.SetPalette(1, 255, 255, 0)   // 1: Yellow
-	c.SetPalette(2, 255, 0, 0)     // 2: Red
-	c.SetPalette(3, 200, 200, 255) // 3: Light Blue
-
-	// Fill gradient
-	for i := 4; i < 256; i++ {
-		r := byte((i * 7) % 256)
-		g := byte((i * 11) % 256)
-		b := byte((i * 17) % 256)
-		c.SetPalette(i, r, g, b)
-	}
-
-	// Sprites
+	// Sprites — each slot gets its own copy of pixel data, cycling through 3 patterns
+	// Colors: 10=yellow, 8=red, 12=blue (from default palette)
+	spriteColors := []byte{10, 8, 12}
+	patternList := [][]byte{patterns[0], patterns[1], patterns[2]}
 	for i := 0; i < 10; i++ {
-		c.SetSprite(i, 50+i*20, 50+i*15, byte(i%3), 0)
+		src := patternList[i%3]
+		spriteData := make([]byte, 64)
+		for j, val := range src {
+			if val > 0 {
+				spriteData[j] = spriteColors[i%3]
+			}
+		}
+		c.SetSpriteData(i, spriteData)
+		c.SetSprite(i, gonsole.Sprite{
+			X:     int16(50 + i*20),
+			Y:     int16(50 + i*15),
+			Props: gonsole.SpritePropVisible,
+		})
 	}
+
+	// Mouse cursor sprite (slot 10) — screen-space so camera doesn't affect it
+	c.SetSpriteData(10, cursorArrow[:])
+	c.SetSprite(10, gonsole.Sprite{Props: gonsole.SpritePropVisible | gonsole.SpritePropScreenSpace})
 
 	// Static Background
-	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 40, true)
-	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 255, false)
+	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 1, true)  // dark blue fill
+	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 7, false) // white border
 	for b := 0; b < 4; b++ {
-		c.DrawRect(20+b*80, 200, 20, 20, byte(100+b*40), true)
+		c.DrawRect(20+b*80, 200, 20, 20, byte(3+b), true) // green/brown/grey/light-grey boxes
 	}
 	centerX, centerY := gonsole.ScreenWidth/2, gonsole.ScreenHeight/2
-	c.DrawRect(centerX-20, centerY-20, 40, 40, 200, false)
-	c.DrawLine(centerX-10, centerY, centerX+10, centerY, 200)
-	c.DrawRect(centerX+10, centerY, 10, 20, 200, false)
+	c.DrawRect(centerX-20, centerY-20, 40, 40, 6, false)
+	c.DrawLine(centerX-10, centerY, centerX+10, centerY, 6)
+	c.DrawRect(centerX+10, centerY, 10, 20, 6, false)
 }
