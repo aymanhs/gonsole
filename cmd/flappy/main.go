@@ -154,7 +154,7 @@ type game struct {
 	worldDist float64 // accumulated world pixels scrolled; drives CameraX
 
 	// input edge detection
-	prevFlap bool
+	// (removed prevFlap manually, now using c.JustPressed/JustPressedMouse)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -176,12 +176,9 @@ func (g *game) flapping() bool {
 }
 
 func (g *game) justPressed() bool {
-	cur := g.c.IsPressed(gonsole.ButtonA) ||
-		g.c.IsPressed(gonsole.ButtonUp) ||
-		g.c.MousePressed(gonsole.MouseButtonLeft)
-	fired := cur && !g.prevFlap
-	g.prevFlap = cur
-	return fired
+	return g.c.JustPressed(gonsole.ButtonA) ||
+		g.c.JustPressed(gonsole.ButtonUp) ||
+		g.c.JustPressedMouse(gonsole.MouseButtonLeft)
 }
 
 // spawnPipe places pipe i at the right edge with a random gap.
@@ -268,7 +265,6 @@ func (g *game) reset() {
 	g.velY = 0
 	g.score = 0
 	g.flapAge = 0
-	g.prevFlap = false
 	g.worldDist = 0
 	g.c.CameraX = 0
 	g.seedParallaxTiles()
@@ -465,6 +461,7 @@ func main() {
 		X:         birdX,
 		Y:         uint16(g.birdY),
 		Props:     gonsole.StampPropVisible | gonsole.StampPropScreenSpace,
+		PaletteID: 0,
 		DrawLayer: 2,
 	})
 

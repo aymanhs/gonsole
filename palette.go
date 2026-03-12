@@ -1,7 +1,5 @@
 package gonsole
 
-// ── PaletteColor ──────────────────────────────────────────────────────────────
-
 // PaletteColor packs one 6-bit RGB color and 2 flag bits into a single byte:
 //
 //	bit 7    = transparent — this index is drawn fully transparent
@@ -31,20 +29,16 @@ func (p PaletteColor) ToRGB8() (r, g, b byte) {
 	return p.R() * 85, p.G() * 85, p.B() * 85
 }
 
-// ── Palette ───────────────────────────────────────────────────────────────────
-
 // Palette holds 16 PaletteColor entries for a sprite or tile layer.
 type Palette struct {
 	Colors [16]PaletteColor
 }
 
-// ── PaletteBank ───────────────────────────────────────────────────────────────
-
-// PaletteBank holds 256 palettes × 16 colors, each pre-expanded to RGBA.
+// PaletteBank holds 4 palettes × 16 colors, each pre-expanded to RGBA.
 // Render pipeline lookup is a single array index: bank.Colors[bankID][colorIdx].
-// Total size: 256 × 16 × 4 = 16 KB.
+// Total size: 4 × 16 × 4 = 256 bytes.
 type PaletteBank struct {
-	Colors [256][16][4]byte // [bankID][colorIdx] → {R, G, B, A}
+	Colors [4][16][4]byte // [bankID][colorIdx] → {R, G, B, A}
 }
 
 // Set stores a raw RGBA entry directly.
@@ -69,30 +63,36 @@ func (pb *PaletteBank) RGBA(bankID, idx byte) *[4]byte {
 	return &pb.Colors[bankID][idx]
 }
 
-// ── TileBank ──────────────────────────────────────────────────────────────────
-
-// TileBank stores up to 256 tiles, each 8×8 pixels with 4-bit (0–15) color indices.
-// Two pixels are packed per byte: high nibble = left pixel (even x), low nibble = right pixel (odd x).
-// Each tile is therefore 32 bytes (8 rows × 4 bytes/row).
-type TileBank struct {
-	Tiles [256][32]byte
+// defaultPalette is a PICO-8 inspired 16-color palette.
+// Index 0 is reserved as transparent/black.
+var defaultPalette = [16][3]byte{
+	0:  {0, 0, 0},       // 0  black      (transparent)
+	1:  {29, 43, 83},    // 1  dark blue
+	2:  {126, 37, 83},   // 2  dark purple
+	3:  {0, 135, 81},    // 3  dark green
+	4:  {171, 82, 54},   // 4  brown
+	5:  {95, 87, 79},    // 5  dark grey
+	6:  {194, 195, 199}, // 6  light grey
+	7:  {255, 241, 232}, // 7  white
+	8:  {255, 0, 77},    // 8  red
+	9:  {255, 163, 0},   // 9  orange
+	10: {255, 236, 39},  // 10 yellow
+	11: {0, 228, 54},    // 11 green
+	12: {41, 173, 255},  // 12 blue
+	13: {131, 118, 156}, // 13 lavender
+	14: {255, 119, 168}, // 14 pink
+	15: {255, 204, 170}, // 15 peach
 }
 
-// TileGetPixel returns the 4-bit color index at pixel (x, y) within a tile.
-func (tb *TileBank) TileGetPixel(tile, x, y int) byte {
-	b := tb.Tiles[tile][y*4+x/2]
-	if x&1 == 0 {
-		return (b >> 4) & 0xF
+// SetPalette updates a direct palette entry and syncs it to PaletteBank slot 0.
+func (c *Console) SetPalette(index int, r, g, b byte) {
+	if index < 0 || index >= 16 {
+		return
 	}
-	return b & 0xF
-}
-
-// TileSetPixel sets the 4-bit color index at pixel (x, y) within a tile.
-func (tb *TileBank) TileSetPixel(tile, x, y int, idx byte) {
-	i := y*4 + x/2
-	if x&1 == 0 {
-		tb.Tiles[tile][i] = (tb.Tiles[tile][i] & 0x0F) | (idx << 4)
-	} else {
-		tb.Tiles[tile][i] = (tb.Tiles[tile][i] & 0xF0) | (idx & 0xF)
+	c.Palette[index] = [3]byte{r, g, b}
+	a := byte(255)
+	if index == 0 {
+		a = 0
 	}
+	c.PaletteBank.Colors[0][index] = [4]byte{r, g, b, a}
 }

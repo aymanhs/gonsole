@@ -14,6 +14,7 @@ const (
 )
 
 func (c *Console) pollInputs() {
+	c.prevButtons = c.Buttons
 	var b byte
 	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
 		b |= ButtonUp
@@ -39,4 +40,9 @@ func (c *Console) pollInputs() {
 // IsPressed returns true if the given button is currently held.
 func (c *Console) IsPressed(btn byte) bool {
 	return c.Buttons&btn != 0
+}
+
+// JustPressed returns true only on the frame the button was first pressed.
+func (c *Console) JustPressed(btn byte) bool {
+	return (c.Buttons&btn != 0) && (c.prevButtons&btn == 0)
 }

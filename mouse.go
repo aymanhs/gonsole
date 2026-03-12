@@ -9,6 +9,7 @@ const (
 )
 
 func (c *Console) pollMouse() {
+	c.prevMouseButtons = c.MouseButtons
 	x, y := ebiten.CursorPosition()
 	c.MouseX = x
 	c.MouseY = y
@@ -34,4 +35,9 @@ func (c *Console) MousePos() (x, y int) {
 // MousePressed returns true if the given mouse button is currently held.
 func (c *Console) MousePressed(btn byte) bool {
 	return c.MouseButtons&btn != 0
+}
+
+// JustPressedMouse returns true only on the frame the mouse button was first pressed.
+func (c *Console) JustPressedMouse(btn byte) bool {
+	return (c.MouseButtons&btn != 0) && (c.prevMouseButtons&btn == 0)
 }

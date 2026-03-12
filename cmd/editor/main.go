@@ -1,0 +1,104 @@
+package main
+
+import (
+	"log"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"aymanhs/gonsole"
+)
+
+type EditorState struct {
+	mode          int // 0: Palette, 1: Pixel, 2: Tilemap, 3: Font
+	paletteEditor PaletteEditor
+	pixelEditor   PixelEditor
+	tilemapEditor TilemapEditor
+	fontEditor    FontEditor
+	clipboard     manip8x8
+}
+
+func main() {
+	c := gonsole.NewConsole()
+	
+	state := &EditorState{
+		mode: 0,
+		pixelEditor: PixelEditor{zoom: 16, targetType: 0}, // default to sprite
+		fontEditor:  FontEditor{selectedChar: 'A'},
+	}
+
+	var statusMsg string
+	var statusTimer int
+
+	c.UpdateFunc = func(frame, ms uint64) error {
+		// Switch modes with number keys
+		if ebiten.IsKeyPressed(ebiten.Key1) { state.mode = 0 }
+		if ebiten.IsKeyPressed(ebiten.Key2) { state.mode = 1 }
+		if ebiten.IsKeyPressed(ebiten.Key3) { state.mode = 2 }
+		if ebiten.IsKeyPressed(ebiten.Key4) { state.mode = 3 }
+
+		// Save/Load
+		if ebiten.IsKeyPressed(ebiten.KeyControl) && ebiten.IsKeyPressed(ebiten.KeyS) {
+			if err := c.SaveJSON("cart.gon"); err == nil {
+				statusMsg = "Saved to cart.gon"
+				statusTimer = 120
+			} else {
+				statusMsg = "ERROR: " + err.Error()
+				statusTimer = 120
+			}
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyControl) && ebiten.IsKeyPressed(ebiten.KeyL) {
+			if err := c.LoadJSON("cart.gon"); err == nil {
+				statusMsg = "Loaded from cart.gon"
+				statusTimer = 120
+			} else {
+				statusMsg = "ERROR: " + err.Error()
+				statusTimer = 120
+			}
+		}
+
+		if statusTimer > 0 {
+			statusTimer--
+		}
+
+		switch state.mode {
+		case 0:
+			state.paletteEditor.Update(c)
+		case 1:
+			state.pixelEditor.Update(c, 20, 40, &state.clipboard)
+		case 2:
+			state.tilemapEditor.Update(c)
+		case 3:
+			state.fontEditor.Update(c, 20, 40, &state.clipboard)
+		}
+		
+		return nil
+	}
+
+	c.PaintFunc = func(slot int, frame uint64) {
+		if slot == gonsole.PaintSlotEnd {
+			switch state.mode {
+			case 0:
+				state.paletteEditor.Draw(c)
+			case 1:
+				state.pixelEditor.Draw(c, 20, 40)
+			case 2:
+				state.tilemapEditor.Draw(c)
+			case 3:
+				state.fontEditor.Draw(c, 20, 40)
+			}
+			
+			// HUD
+			c.DrawRect(0, 0, gonsole.ScreenWidth, 24, 1, true)
+			c.DrawText(5, 4, "[1] PAL [2] TILE [3] MAP [4] FONT")
+			c.DrawText(220, 4, "CTRL+S Save  CTRL+L Load")
+
+			if statusTimer > 0 {
+				c.DrawRect(0, gonsole.ScreenHeight-20, gonsole.ScreenWidth, 20, 2, true)
+				c.DrawText(5, gonsole.ScreenHeight-15, statusMsg)
+			}
+		}
+	}
+
+	if err := gonsole.Run(c); err != nil {
+		log.Fatal(err)
+	}
+}

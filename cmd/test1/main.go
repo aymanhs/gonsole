@@ -83,6 +83,21 @@ func main() {
 		return nil
 	}
 
+	c.PaintFunc = func(slot int, frame uint64) {
+		if slot == gonsole.PaintSlotBegin {
+			// Static Background — drawn every frame at the start
+			c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 1, true)  // dark blue fill
+			c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 7, false) // white border
+			for b := 0; b < 4; b++ {
+				c.DrawRect(20+b*80, 200, 20, 20, byte(3+b), true) // green/brown/grey/light-grey boxes
+			}
+			centerX, centerY := gonsole.ScreenWidth/2, gonsole.ScreenHeight/2
+			c.DrawRect(centerX-20, centerY-20, 40, 40, 6, false)
+			c.DrawLine(centerX-10, centerY, centerX+10, centerY, 6)
+			c.DrawRect(centerX+10, centerY, 10, 20, 6, false)
+		}
+	}
+
 	setupDemo(c)
 
 	if err := gonsole.Run(c); err != nil {
@@ -139,24 +154,17 @@ func setupDemo(c *gonsole.Console) {
 		}
 		c.SetSpriteData(i, spriteData)
 		c.SetStamp(i, gonsole.Stamp{
-			X:     uint16(50 + i*20),
-			Y:     uint16(50 + i*15),
-			Props: gonsole.StampPropVisible,
+			X:         uint16(50 + i*20),
+			Y:         uint16(50 + i*15),
+			Props:     gonsole.StampPropVisible,
+			PaletteID: 0,
 		})
 	}
 
 	// Mouse cursor sprite (slot 10) — screen-space so camera doesn't affect it
 	c.SetSpriteData(10, cursorArrow[:])
-	c.SetStamp(10, gonsole.Stamp{Props: gonsole.StampPropVisible | gonsole.StampPropScreenSpace})
-
-	// Static Background
-	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 1, true)  // dark blue fill
-	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 7, false) // white border
-	for b := 0; b < 4; b++ {
-		c.DrawRect(20+b*80, 200, 20, 20, byte(3+b), true) // green/brown/grey/light-grey boxes
-	}
-	centerX, centerY := gonsole.ScreenWidth/2, gonsole.ScreenHeight/2
-	c.DrawRect(centerX-20, centerY-20, 40, 40, 6, false)
-	c.DrawLine(centerX-10, centerY, centerX+10, centerY, 6)
-	c.DrawRect(centerX+10, centerY, 10, 20, 6, false)
+	c.SetStamp(10, gonsole.Stamp{
+		Props:     gonsole.StampPropVisible | gonsole.StampPropScreenSpace,
+		PaletteID: 0,
+	})
 }
