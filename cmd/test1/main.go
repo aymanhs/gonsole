@@ -38,48 +38,42 @@ func main() {
 	// Demo Movement Logic hooked into Console.Update
 	c.UpdateFunc = func(frame, ms uint64) error {
 		// Player-controlled sprite (index 0)
-		s := c.GetSprite(0)
-		if c.IsPressed(gonsole.ButtonUp) {
+		s := c.GetStamp(0)
+		if c.IsPressed(gonsole.ButtonUp) && s.Y > 0 {
 			s.Y--
 		}
 		if c.IsPressed(gonsole.ButtonDown) {
 			s.Y++
 		}
-		if c.IsPressed(gonsole.ButtonLeft) {
+		if c.IsPressed(gonsole.ButtonLeft) && s.X > 0 {
 			s.X--
 		}
 		if c.IsPressed(gonsole.ButtonRight) {
 			s.X++
 		}
 
-		// Boundary check for player
-		if s.X < 0 {
-			s.X = 0
-		}
+		// Clamp to screen
 		if int(s.X) > gonsole.ScreenWidth-8 {
-			s.X = gonsole.ScreenWidth - 8
-		}
-		if s.Y < 0 {
-			s.Y = 0
+			s.X = uint16(gonsole.ScreenWidth - 8)
 		}
 		if int(s.Y) > gonsole.ScreenHeight-8 {
-			s.Y = gonsole.ScreenHeight - 8
+			s.Y = uint16(gonsole.ScreenHeight - 8)
 		}
-		c.SetSprite(0, s)
+		c.SetStamp(0, s)
 
 		// Other sprites (1-9) move automatically
 		for i := 1; i < 10; i++ {
-			s := c.GetSprite(i)
-			s.X = (s.X + 1) % gonsole.ScreenWidth
-			s.Y = (s.Y + 1) % gonsole.ScreenHeight
-			c.SetSprite(i, s)
+			s := c.GetStamp(i)
+			s.X = (s.X + 1) % uint16(gonsole.ScreenWidth)
+			s.Y = (s.Y + 1) % uint16(gonsole.ScreenHeight)
+			c.SetStamp(i, s)
 		}
 		// Mouse cursor sprite (slot 10) — follows mouse, changes shape on click
 		mx, my := c.MousePos()
-		cursor := c.GetSprite(10)
-		cursor.X = int16(mx - 8)
-		cursor.Y = int16(my - 8)
-		c.SetSprite(10, cursor)
+		cursor := c.GetStamp(10)
+		cursor.X = uint16(mx)
+		cursor.Y = uint16(my)
+		c.SetStamp(10, cursor)
 		if c.MousePressed(gonsole.MouseButtonLeft) || c.MousePressed(gonsole.MouseButtonRight) {
 			c.SetSpriteData(10, cursorClick[:])
 		} else {
@@ -144,16 +138,16 @@ func setupDemo(c *gonsole.Console) {
 			}
 		}
 		c.SetSpriteData(i, spriteData)
-		c.SetSprite(i, gonsole.Sprite{
-			X:     int16(50 + i*20),
-			Y:     int16(50 + i*15),
-			Props: gonsole.SpritePropVisible,
+		c.SetStamp(i, gonsole.Stamp{
+			X:     uint16(50 + i*20),
+			Y:     uint16(50 + i*15),
+			Props: gonsole.StampPropVisible,
 		})
 	}
 
 	// Mouse cursor sprite (slot 10) — screen-space so camera doesn't affect it
 	c.SetSpriteData(10, cursorArrow[:])
-	c.SetSprite(10, gonsole.Sprite{Props: gonsole.SpritePropVisible | gonsole.SpritePropScreenSpace})
+	c.SetStamp(10, gonsole.Stamp{Props: gonsole.StampPropVisible | gonsole.StampPropScreenSpace})
 
 	// Static Background
 	c.DrawRect(0, 0, gonsole.ScreenWidth, gonsole.ScreenHeight, 1, true)  // dark blue fill
