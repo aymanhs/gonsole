@@ -84,7 +84,7 @@ var defaultPalette = [16][3]byte{
 	15: {255, 204, 170}, // 15 peach
 }
 
-// SetPalette updates a direct palette entry and syncs it to PaletteBank slot 0.
+// SetPalette updates a direct palette entry (Bank 0) using 8-bit RGB values.
 func (c *Console) SetPalette(index int, r, g, b byte) {
 	if index < 0 || index >= 16 {
 		return
@@ -95,4 +95,25 @@ func (c *Console) SetPalette(index int, r, g, b byte) {
 		a = 0
 	}
 	c.PaletteBank.Colors[0][index] = [4]byte{r, g, b, a}
+}
+
+// SetBankPalette updates a palette entry in a specific bank using 2-bit (0-3) RGB values.
+func (c *Console) SetBankPalette(bank, index int, r, g, b byte) {
+	if bank < 0 || bank >= 4 || index < 0 || index >= 16 {
+		return
+	}
+	
+	// Convert 2-bit to 8-bit (0-255)
+	r8, g8, b8 := (r&3)*85, (g&3)*85, (b&3)*85
+	a := byte(255)
+	if index == 0 {
+		a = 0
+	}
+	
+	c.PaletteBank.Colors[bank][index] = [4]byte{r8, g8, b8, a}
+	
+	// If bank 0, also update the main Palette array (as 8-bit)
+	if bank == 0 {
+		c.Palette[index] = [3]byte{r8, g8, b8}
+	}
 }

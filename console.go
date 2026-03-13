@@ -40,11 +40,11 @@ type Console struct {
 
 	// Callbacks
 	UpdateFunc func(frame, ms uint64) error
-	// PaintFunc is called at 7 fixed slots during compositing (use PaintSlot* constants).
-	// All drawing primitives (SetPixel, DrawLine, DrawRect, DrawCircle) write directly into
-	// the scratch buffer at that point in the pipeline — scratch IS the framebuffer.
-	// The slot IS the draw queue; there is no separate persistent buffer.
 	PaintFunc func(slot int, frame uint64)
+	
+	// OverlayFunc is called after the internal low-res buffer is drawn to screen,
+	// allowing for high-res overlays like debug info or editor UI.
+	OverlayFunc func(screen *ebiten.Image)
 
 	// Internal: persistent GPU image and RGBA scratch buffer
 	screenImg *ebiten.Image
@@ -155,6 +155,10 @@ func (c *Console) Draw(screen *ebiten.Image) {
 	// ── 3. One WritePixels → GPU ──────────────────────────────────────────────
 	c.screenImg.WritePixels(c.Scratch[:])
 	screen.DrawImage(c.screenImg, nil)
+
+	if c.OverlayFunc != nil {
+		c.OverlayFunc(screen)
+	}
 }
 
 // drawTileLayer composites one tile layer onto the scratch buffer.

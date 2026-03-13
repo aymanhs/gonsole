@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"aymanhs/gonsole"
 )
 
@@ -14,6 +15,7 @@ type EditorState struct {
 	tilemapEditor TilemapEditor
 	fontEditor    FontEditor
 	clipboard     manip8x8
+	colorClipboard [4]byte
 }
 
 func main() {
@@ -61,7 +63,7 @@ func main() {
 
 		switch state.mode {
 		case 0:
-			state.paletteEditor.Update(c)
+			state.paletteEditor.Update(c, &state.colorClipboard)
 		case 1:
 			state.pixelEditor.Update(c, 20, 40, &state.clipboard)
 		case 2:
@@ -85,16 +87,21 @@ func main() {
 			case 3:
 				state.fontEditor.Draw(c, 20, 40)
 			}
-			
-			// HUD
-			c.DrawRect(0, 0, gonsole.ScreenWidth, 24, 1, true)
-			c.DrawText(5, 4, "[1] PAL [2] TILE [3] MAP [4] FONT")
-			c.DrawText(220, 4, "CTRL+S Save  CTRL+L Load")
+		}
+	}
 
-			if statusTimer > 0 {
-				c.DrawRect(0, gonsole.ScreenHeight-20, gonsole.ScreenWidth, 20, 2, true)
-				c.DrawText(5, gonsole.ScreenHeight-15, statusMsg)
-			}
+	c.OverlayFunc = func(screen *ebiten.Image) {
+		// HUD (on high-res screen)
+		ebitenutil.DebugPrintAt(screen, "[1] PAL [2] TILE [3] MAP [4] FONT | ESC Exit", 10, 5)
+		ebitenutil.DebugPrintAt(screen, "CTRL+S Save  CTRL+L Load", 10, 20)
+		
+		if statusTimer > 0 {
+			ebitenutil.DebugPrintAt(screen, "STATUS: " + statusMsg, 160, 220)
+		}
+
+		switch state.mode {
+		case 0:
+			state.paletteEditor.DrawOverlay(screen)
 		}
 	}
 
