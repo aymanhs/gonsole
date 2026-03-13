@@ -18,6 +18,7 @@ type PixelEditor struct {
 	scratchIDs    [9]int
 	scratchBanks  [9]int
 	scratchTypes  [9]int
+	fontDrawMode  int // 0: none, 1: draw 1s, 2: draw 0s
 }
 
 func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) {
@@ -71,16 +72,34 @@ func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) 
 		}
 	}
 
-	// Handle Font bit-toggling (JustPressed)
-	if e.targetType == 2 && c.JustPressedMouse(gonsole.MouseButtonLeft) {
-		gx := (mx - x) / cellSize
-		gy := (my - y) / cellSize
-		if gx >= 0 && gx < 8 && gy >= 0 && gy < 8 {
-			current := getFontPixel(c, e.targetID, gx, gy)
-			if current == 0 {
-				setFontPixel(c, e.targetID, gx, gy, 1)
+	// Handle Font bit-toggling
+	if e.targetType == 2 {
+		if c.JustPressedMouse(gonsole.MouseButtonLeft) {
+			gx := (mx - x) / cellSize
+			gy := (my - y) / cellSize
+			if gx >= 0 && gx < 8 && gy >= 0 && gy < 8 {
+				current := getFontPixel(c, e.targetID, gx, gy)
+				if current == 0 {
+					e.fontDrawMode = 1
+				} else {
+					e.fontDrawMode = 2
+				}
 			} else {
-				setFontPixel(c, e.targetID, gx, gy, 0)
+				e.fontDrawMode = 0
+			}
+		}
+		if !c.MousePressed(gonsole.MouseButtonLeft) {
+			e.fontDrawMode = 0
+		}
+		if e.fontDrawMode > 0 && c.MousePressed(gonsole.MouseButtonLeft) {
+			gx := (mx - x) / cellSize
+			gy := (my - y) / cellSize
+			if gx >= 0 && gx < 8 && gy >= 0 && gy < 8 {
+				if e.fontDrawMode == 1 {
+					setFontPixel(c, e.targetID, gx, gy, 1)
+				} else if e.fontDrawMode == 2 {
+					setFontPixel(c, e.targetID, gx, gy, 0)
+				}
 			}
 		}
 	}
