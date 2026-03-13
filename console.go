@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type Console struct {
@@ -16,7 +17,7 @@ type Console struct {
 	SpriteData  [256][32]byte // 4-bit nibble-packed sprite pixel data (8×8)
 	TileBanks   [4]TileBank   // up to 4 tile banks (each 256 tiles × 8×8)
 	TileLayers  [TileLayerCount]TileLayer
-	FontData    [128][8]byte  // 128 characters, each 8x8 (1 bit per pixel, 8 bytes total)
+	FontData    [128][8]byte // 128 characters, each 8x8 (1 bit per pixel, 8 bytes total)
 
 	// Stamps (sprites/tiles positioned in the world or screen space)
 	Stamps [256]Stamp
@@ -40,8 +41,8 @@ type Console struct {
 
 	// Callbacks
 	UpdateFunc func(frame, ms uint64) error
-	PaintFunc func(slot int, frame uint64)
-	
+	PaintFunc  func(slot int, frame uint64)
+
 	// OverlayFunc is called after the internal low-res buffer is drawn to screen,
 	// allowing for high-res overlays like debug info or editor UI.
 	OverlayFunc func(screen *ebiten.Image)
@@ -49,19 +50,25 @@ type Console struct {
 	// Internal: persistent GPU image and RGBA scratch buffer
 	screenImg *ebiten.Image
 	Scratch   [ScreenWidth * ScreenHeight * 4]byte
+
+	pendingTexts []textDraw
+}
+
+type textDraw struct {
+	x, y int
+	text string
 }
 
 func NewConsole() *Console {
 	c := &Console{startTime: time.Now()}
 	c.Palette = defaultPalette
 	// Pre-populate bank 0 from the default palette.
-	// Index 0 is transparent; all others are opaque.
 	for i, rgb := range defaultPalette {
-		a := byte(255)
+		blend := BlendNormal
 		if i == 0 {
-			a = 0
+			blend = BlendTransparent // Backwards compat: preserve index 0 as transparent by default in Bank 0
 		}
-		c.PaletteBank.Colors[0][i] = [4]byte{rgb[0], rgb[1], rgb[2], a}
+		c.PaletteBank.Colors[0][i] = [4]byte{rgb[0], rgb[1], rgb[2], blend}
 	}
 	// Default tile layers: full-speed parallax (1:1)
 	for i := range c.TileLayers {
@@ -155,6 +162,11 @@ func (c *Console) Draw(screen *ebiten.Image) {
 	// ── 3. One WritePixels → GPU ──────────────────────────────────────────────
 	c.screenImg.WritePixels(c.Scratch[:])
 	screen.DrawImage(c.screenImg, nil)
+
+	for _, t := range c.pendingTexts {
+		ebitenutil.DebugPrintAt(screen, t.text, t.x, t.y)
+	}
+	c.pendingTexts = c.pendingTexts[:0]
 
 	if c.OverlayFunc != nil {
 		c.OverlayFunc(screen)

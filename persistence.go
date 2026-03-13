@@ -9,44 +9,67 @@ import (
 
 // Cartridge represents the serialized state of a gonsole project.
 type Cartridge struct {
-	Version    int          `json:"version"`
-	Palettes   []string     `json:"palettes"`    // Hex strings of [16][4]byte (pre-expanded)
-	TileBanks  []string     `json:"tile_banks"`  // Hex strings of [256][32]byte
-	SpriteData string       `json:"sprite_data"` // Hex string of [256][32]byte
-	TileLayers []TileLayer  `json:"tile_layers"`
-	FontData   string       `json:"font_data"` // Hex string of [128][8]byte
+	Version    int                  `json:"version"`
+	Palettes   map[string]string    `json:"palettes,omitempty"`    // Hex strings of [16][4]byte (pre-expanded)
+	TileBanks  map[string]string    `json:"tile_banks,omitempty"`  // Hex strings of [256][32]byte
+	SpriteData string               `json:"sprite_data,omitempty"` // Hex string of [256][32]byte
+	TileLayers map[string]TileLayer `json:"tile_layers,omitempty"`
+	FontData   string               `json:"font_data,omitempty"` // Hex string of [128][8]byte
+}
+
+func isZero(data []byte) bool {
+	for _, b := range data {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // SaveJSON saves the console state to a JSON file with hex-encoded buffers.
 func (c *Console) SaveJSON(path string) error {
 	cart := Cartridge{
-		Version: 1,
+		Version:    1,
+		Palettes:   make(map[string]string),
+		TileBanks:  make(map[string]string),
+		TileLayers: make(map[string]TileLayer),
 	}
 
 	// Encode PaletteBanks
 	for i := 0; i < 4; i++ {
 		data := flattenPalette(c.PaletteBank.Colors[i])
-		cart.Palettes = append(cart.Palettes, hex.EncodeToString(data))
+		if !isZero(data) {
+			cart.Palettes[fmt.Sprintf("%d", i)] = hex.EncodeToString(data)
+		}
 	}
 
 	// Encode TileBanks
 	for i := 0; i < 4; i++ {
 		data := flattenTileBank(c.TileBanks[i].Tiles)
-		cart.TileBanks = append(cart.TileBanks, hex.EncodeToString(data))
+		if !isZero(data) {
+			cart.TileBanks[fmt.Sprintf("%d", i)] = hex.EncodeToString(data)
+		}
 	}
 
 	// Encode SpriteData
 	spriteData := flattenSpriteData(c.SpriteData)
-	cart.SpriteData = hex.EncodeToString(spriteData)
+	if !isZero(spriteData) {
+		cart.SpriteData = hex.EncodeToString(spriteData)
+	}
 
 	// Encode TileLayers
+	emptyLayer := TileLayer{}
 	for i := 0; i < TileLayerCount; i++ {
-		cart.TileLayers = append(cart.TileLayers, c.TileLayers[i])
+		if c.TileLayers[i] != emptyLayer {
+			cart.TileLayers[fmt.Sprintf("%d", i)] = c.TileLayers[i]
+		}
 	}
 
 	// Encode FontData
 	fontData := flattenFontData(c.FontData)
-	cart.FontData = hex.EncodeToString(fontData)
+	if !isZero(fontData) {
+		cart.FontData = hex.EncodeToString(fontData)
+	}
 
 	f, err := os.Create(path)
 	if err != nil {
@@ -67,15 +90,55 @@ func (c *Console) LoadJSON(path string) error {
 	}
 	defer f.Close()
 
-	var cart Cartridge
-	if err := json.NewDecoder(f).Decode(&cart); err != nil {
+	// Use raw messages to support backwards compatibility with slices
+	var raw struct {
+		Version    int             `json:"version"`
+		Palettes   json.RawMessage `json:"palettes"`
+		TileBanks  json.RawMessage `json:"tile_banks"`
+		SpriteData string          `json:"sprite_data"`
+		TileLayers json.RawMessage `json:"tile_layers"`
+		FontData   string          `json:"font_data"`
+	}
+	if err := json.NewDecoder(f).Decode(&raw); err != nil {
 		return err
 	}
 
+	decodeStringSliceOrMap := func(raw json.RawMessage, maxCount int) (map[int]string, error) {
+		res := make(map[int]string)
+		if len(raw) == 0 || string(raw) == "null" {
+			return res, nil
+		}
+		if raw[0] == '[' {
+			var slice []string
+			if err := json.Unmarshal(raw, &slice); err != nil {
+				return nil, err
+			}
+			for i, v := range slice {
+				res[i] = v
+			}
+		} else if raw[0] == '{' {
+			var m map[string]string
+			if err := json.Unmarshal(raw, &m); err != nil {
+				return nil, err
+			}
+			for k, v := range m {
+				var i int
+				if _, err := fmt.Sscanf(k, "%d", &i); err == nil {
+					res[i] = v
+				}
+			}
+		}
+		return res, nil
+	}
+
 	// Decode Palettes
-	for i, h := range cart.Palettes {
+	palettes, err := decodeStringSliceOrMap(raw.Palettes, 4)
+	if err != nil {
+		return fmt.Errorf("failed to decode palettes: %v", err)
+	}
+	for i, h := range palettes {
 		if i >= 4 {
-			break
+			continue
 		}
 		data, err := hex.DecodeString(h)
 		if err != nil {
@@ -85,9 +148,13 @@ func (c *Console) LoadJSON(path string) error {
 	}
 
 	// Decode TileBanks
-	for i, h := range cart.TileBanks {
+	tileBanks, err := decodeStringSliceOrMap(raw.TileBanks, 4)
+	if err != nil {
+		return fmt.Errorf("failed to decode tile banks: %v", err)
+	}
+	for i, h := range tileBanks {
 		if i >= 4 {
-			break
+			continue
 		}
 		data, err := hex.DecodeString(h)
 		if err != nil {
@@ -97,23 +164,44 @@ func (c *Console) LoadJSON(path string) error {
 	}
 
 	// Decode SpriteData
-	data, err := hex.DecodeString(cart.SpriteData)
-	if err != nil {
-		return fmt.Errorf("failed to decode sprite data: %v", err)
+	if raw.SpriteData != "" {
+		data, err := hex.DecodeString(raw.SpriteData)
+		if err != nil {
+			return fmt.Errorf("failed to decode sprite data: %v", err)
+		}
+		copySpriteData(&c.SpriteData, data)
 	}
-	copySpriteData(&c.SpriteData, data)
 
 	// Decode TileLayers
-	for i, l := range cart.TileLayers {
-		if i >= TileLayerCount {
-			break
+	if len(raw.TileLayers) > 0 && string(raw.TileLayers) != "null" {
+		if raw.TileLayers[0] == '[' {
+			var layers []TileLayer
+			if err := json.Unmarshal(raw.TileLayers, &layers); err != nil {
+				return fmt.Errorf("failed to decode tile layers: %v", err)
+			}
+			for i, l := range layers {
+				if i >= TileLayerCount {
+					break
+				}
+				c.TileLayers[i] = l
+			}
+		} else if raw.TileLayers[0] == '{' {
+			var m map[string]TileLayer
+			if err := json.Unmarshal(raw.TileLayers, &m); err != nil {
+				return fmt.Errorf("failed to decode tile layers: %v", err)
+			}
+			for k, l := range m {
+				var i int
+				if _, err := fmt.Sscanf(k, "%d", &i); err == nil && i < TileLayerCount {
+					c.TileLayers[i] = l
+				}
+			}
 		}
-		c.TileLayers[i] = l
 	}
 
 	// Decode FontData
-	if cart.FontData != "" {
-		data, err := hex.DecodeString(cart.FontData)
+	if raw.FontData != "" {
+		data, err := hex.DecodeString(raw.FontData)
 		if err != nil {
 			return fmt.Errorf("failed to decode font data: %v", err)
 		}

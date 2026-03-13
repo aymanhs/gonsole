@@ -3,26 +3,28 @@ package main
 import (
 	"log"
 
+	"aymanhs/gonsole"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"aymanhs/gonsole"
 )
 
 type EditorState struct {
-	mode          int // 0: Palette, 1: Pixel, 2: Tilemap, 3: Font
-	paletteEditor PaletteEditor
-	pixelEditor   PixelEditor
-	tilemapEditor TilemapEditor
-	fontEditor    FontEditor
-	clipboard     manip8x8
+	mode           int // 0: Palette, 1: Pixel, 2: Tilemap, 3: Font
+	paletteEditor  PaletteEditor
+	pixelEditor    PixelEditor
+	tilemapEditor  TilemapEditor
+	fontEditor     FontEditor
+	clipboard      manip8x8
 	colorClipboard [4]byte
+	bankClipboard  [16][4]byte
 }
 
 func main() {
 	c := gonsole.NewConsole()
-	
+
 	state := &EditorState{
-		mode: 0,
+		mode:        0,
 		pixelEditor: PixelEditor{zoom: 16, targetType: 0}, // default to sprite
 		fontEditor:  FontEditor{selectedChar: 'A'},
 	}
@@ -32,10 +34,18 @@ func main() {
 
 	c.UpdateFunc = func(frame, ms uint64) error {
 		// Switch modes with number keys
-		if ebiten.IsKeyPressed(ebiten.Key1) { state.mode = 0 }
-		if ebiten.IsKeyPressed(ebiten.Key2) { state.mode = 1 }
-		if ebiten.IsKeyPressed(ebiten.Key3) { state.mode = 2 }
-		if ebiten.IsKeyPressed(ebiten.Key4) { state.mode = 3 }
+		if ebiten.IsKeyPressed(ebiten.Key1) {
+			state.mode = 0
+		}
+		if ebiten.IsKeyPressed(ebiten.Key2) {
+			state.mode = 1
+		}
+		if ebiten.IsKeyPressed(ebiten.Key3) {
+			state.mode = 2
+		}
+		if ebiten.IsKeyPressed(ebiten.Key4) {
+			state.mode = 3
+		}
 
 		// Save/Load
 		if ebiten.IsKeyPressed(ebiten.KeyControl) && ebiten.IsKeyPressed(ebiten.KeyS) {
@@ -63,7 +73,7 @@ func main() {
 
 		switch state.mode {
 		case 0:
-			state.paletteEditor.Update(c, &state.colorClipboard)
+			state.paletteEditor.Update(c, &state.colorClipboard, &state.bankClipboard)
 		case 1:
 			state.pixelEditor.Update(c, 20, 40, &state.clipboard)
 		case 2:
@@ -71,7 +81,7 @@ func main() {
 		case 3:
 			state.fontEditor.Update(c, 20, 40, &state.clipboard)
 		}
-		
+
 		return nil
 	}
 
@@ -92,11 +102,11 @@ func main() {
 
 	c.OverlayFunc = func(screen *ebiten.Image) {
 		// HUD (on high-res screen)
-		ebitenutil.DebugPrintAt(screen, "[1] PAL [2] TILE [3] MAP [4] FONT | ESC Exit", 10, 5)
-		ebitenutil.DebugPrintAt(screen, "CTRL+S Save  CTRL+L Load", 10, 20)
-		
+		ebitenutil.DebugPrintAt(screen, "[1] PAL [2] TILE [3] MAP [4] FONT | ESC Exit", 150, 3)
+		ebitenutil.DebugPrintAt(screen, "CTRL+S Save  CTRL+L Load", 470, 3)
+
 		if statusTimer > 0 {
-			ebitenutil.DebugPrintAt(screen, "STATUS: " + statusMsg, 160, 220)
+			ebitenutil.DebugPrintAt(screen, "STATUS: "+statusMsg, 160, 220)
 		}
 
 		switch state.mode {

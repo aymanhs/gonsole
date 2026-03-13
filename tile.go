@@ -109,14 +109,9 @@ func BlitTile(bank *TileBank, tileID, sx, sy int, pal *[16][4]byte, scratch *[Sc
 				nibble = b & 0xF
 			}
 			rgba := &pal[nibble]
-			if rgba[3] == 0 {
-				continue
-			}
+
 			dst := (dstRow + dx) * 4
-			scratch[dst] = rgba[0]
-			scratch[dst+1] = rgba[1]
-			scratch[dst+2] = rgba[2]
-			scratch[dst+3] = rgba[3]
+			ApplyBlend(scratch, dst, rgba)
 		}
 	}
 }

@@ -1,0 +1,14 @@
+--- cmd/editor/pixel_editor.go
++++ cmd/editor/pixel_editor.go
+@@ -9,6 +9,8 @@
+ type PixelEditor struct {
+ targetType    int // 0 for sprite, 1 for tile, 2 for font
++targetBank    int // For tiles, 0-3
+ targetID      int
+ zoom          int
+ cursorX       int
+ cursorY       int
+ selectedColor byte
++scratchIDs    [9]int
++scratchBanks  [9]int
+ }

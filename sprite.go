@@ -83,14 +83,9 @@ func BlitSprite(data []byte, sx, sy int, props byte, pal *[16][4]byte, scratch *
 				colorIdx = b & 0xF
 			}
 			rgba := &pal[colorIdx]
-			if rgba[3] == 0 {
-				continue
-			}
+
 			dst := (dstRow + dx) * 4
-			scratch[dst] = rgba[0]
-			scratch[dst+1] = rgba[1]
-			scratch[dst+2] = rgba[2]
-			scratch[dst+3] = rgba[3]
+			ApplyBlend(scratch, dst, rgba)
 		}
 	}
 }

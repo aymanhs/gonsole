@@ -1,0 +1,39 @@
+--- cmd/editor/pixel_editor.go
++++ cmd/editor/pixel_editor.go
+@@ -95,6 +95,35 @@
+ }
+ }
+ }
++
++// Handle Bank Grid, Selectors, and Scratchpad if not Font
++if e.targetType != 2 && c.JustPressedMouse(gonsole.MouseButtonLeft) {
++// Target Type / Bank Selectors
++if my >= y && my < y+20 {
++if mx >= x+200 && mx < x+260 { e.targetType = 0 } // Sprite
++if mx >= x+270 && mx < x+310 { e.targetType = 1 } // Tile
++if e.targetType == 1 {
++for b := 0; b < 4; b++ {
++if mx >= x+320+b*20 && mx < x+335+b*20 { e.targetBank = b }
++}
++}
++}
++
++// Bank Grid
++gridX, gridY := x+200, y+30
++if mx >= gridX && mx < gridX+128 && my >= gridY && my < gridY+128 {
++col := (mx - gridX) / 8
++row := (my - gridY) / 8
++e.targetID = row*16 + col
++}
++
++// Scratchpad
++sx, sy := x+400, y+30
++if mx >= sx && mx < sx+72 && my >= sy && my < sy+72 {
++cx, cy := (mx-sx)/24, (my-sy)/24
++idx := cy*3 + cx
++e.scratchIDs[idx] = e.targetID
++e.scratchBanks[idx] = e.targetBank
++e.scratchTypes[idx] = e.targetType
++}
++}
+ }

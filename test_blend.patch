@@ -1,0 +1,22 @@
+--- a/draw.go
++++ b/draw.go
+@@ -3,6 +3,33 @@
+ func blend(scratch *[ScreenWidth*ScreenHeight*4]byte, dst int, rgba *[4]byte) {
+     blend := rgba[3]
+     if blend == 3 {
+         return
+     }
+     
+     if blend == 0 {
+         scratch[dst] = rgba[0]
+         scratch[dst+1] = rgba[1]
+         scratch[dst+2] = rgba[2]
+         scratch[dst+3] = 255
+     } else if blend == 2 {
+         // Add
+         r := int(scratch[dst]) + int(rgba[0])
+         if r > 255 { r = 255 }
+         scratch[dst] = byte(r)
+         // ... etc
+     }
+ }

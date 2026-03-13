@@ -1,12 +1,8 @@
 package gonsole
 
-import (
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-)
-
 const (
-	ScreenWidth  = 320
-	ScreenHeight = 240
+	ScreenWidth  = 640
+	ScreenHeight = 480
 
 	TransparentColor = 0 // palette index reserved for transparency
 
@@ -20,6 +16,55 @@ const (
 	PaintSlotEnd     = 6 // after HUD stamps (layers 4–7), before GPU upload
 )
 
+// ApplyBlend applies the calculated blend mode values into the pixel byte array.
+func ApplyBlend(scratch *[ScreenWidth * ScreenHeight * 4]byte, dst int, rgba *[4]byte) {
+	blend := rgba[3]
+	if blend == BlendTransparent {
+		return // Skip rendering
+	}
+
+	if blend == BlendNormal {
+		scratch[dst] = rgba[0]
+		scratch[dst+1] = rgba[1]
+		scratch[dst+2] = rgba[2]
+		scratch[dst+3] = 255
+	} else if blend == BlendSubtract {
+		r := int(scratch[dst]) - int(rgba[0])
+		g := int(scratch[dst+1]) - int(rgba[1])
+		b := int(scratch[dst+2]) - int(rgba[2])
+		if r < 0 {
+			r = 0
+		}
+		if g < 0 {
+			g = 0
+		}
+		if b < 0 {
+			b = 0
+		}
+		scratch[dst] = byte(r)
+		scratch[dst+1] = byte(g)
+		scratch[dst+2] = byte(b)
+		scratch[dst+3] = 255
+	} else if blend == BlendAdd {
+		r := int(scratch[dst]) + int(rgba[0])
+		g := int(scratch[dst+1]) + int(rgba[1])
+		b := int(scratch[dst+2]) + int(rgba[2])
+		if r > 255 {
+			r = 255
+		}
+		if g > 255 {
+			g = 255
+		}
+		if b > 255 {
+			b = 255
+		}
+		scratch[dst] = byte(r)
+		scratch[dst+1] = byte(g)
+		scratch[dst+2] = byte(b)
+		scratch[dst+3] = 255
+	}
+}
+
 // SetPixel writes a palette color index at screen-space (x, y) directly into
 // the scratch buffer. Call from inside PaintFunc; the slot determines where in
 // the compositing order the pixel lands.
@@ -28,14 +73,7 @@ func (c *Console) SetPixel(x, y int, colorIdx byte) {
 		return
 	}
 	rgba := &c.PaletteBank.Colors[c.FramePaletteID][colorIdx&0xF]
-	if rgba[3] == 0 {
-		return
-	}
-	dst := (y*ScreenWidth + x) * 4
-	c.Scratch[dst] = rgba[0]
-	c.Scratch[dst+1] = rgba[1]
-	c.Scratch[dst+2] = rgba[2]
-	c.Scratch[dst+3] = rgba[3]
+	ApplyBlend(&c.Scratch, (y*ScreenWidth+x)*4, rgba)
 }
 
 // DrawLine draws a line using Bresenham's algorithm.
@@ -126,9 +164,7 @@ func (c *Console) DrawCircle(xc, yc, r int, colorIdx byte, filled bool) {
 // Text is drawn onto screenImg after scratch is uploaded to the GPU, so it
 // always appears on top regardless of which slot PaintFunc calls it from.
 func (c *Console) DrawText(x, y int, text string) {
-	if c.screenImg != nil {
-		ebitenutil.DebugPrintAt(c.screenImg, text, x, y)
-	}
+	c.pendingTexts = append(c.pendingTexts, textDraw{x, y, text})
 }
 
 // DrawCustomText draws a string using the Console's internal FontData.
