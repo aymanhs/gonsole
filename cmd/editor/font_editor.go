@@ -9,7 +9,7 @@ type FontEditor struct {
 	pixelEditor  PixelEditor
 }
 
-func (e *FontEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) {
+func (e *FontEditor) Update(c *gonsole.Console, x, y int, clipboard *manip16x16) {
 	mx, my := c.MousePos()
 	
 	// Character Selection Grid (16x8 for 128 characters)

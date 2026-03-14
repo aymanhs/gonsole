@@ -1,29 +1,21 @@
 package gonsole
 
-// TileBank stores up to 256 tiles, each 8×8 pixels with 4-bit (0–15) color indices.
-// Two pixels are packed per byte: high nibble = left pixel (even x), low nibble = right pixel (odd x).
-// Each tile is therefore 32 bytes (8 rows × 4 bytes/row).
+import "unsafe"
+
+// TileBank stores up to 256 tiles, each 16×16 pixels with 1-byte color indices.
+// Each tile is therefore 256 bytes (16 rows × 16 bytes/row).
 type TileBank struct {
-	Tiles [256][32]byte
+	Tiles [256][256]byte
 }
 
 // TileGetPixel returns the 4-bit color index at pixel (x, y) within a tile.
 func (tb *TileBank) TileGetPixel(tile, x, y int) byte {
-	b := tb.Tiles[tile][y*4+x/2]
-	if x&1 == 0 {
-		return (b >> 4) & 0xF
-	}
-	return b & 0xF
+	return tb.Tiles[tile][y*TileSize+x]
 }
 
 // TileSetPixel sets the 4-bit color index at pixel (x, y) within a tile.
 func (tb *TileBank) TileSetPixel(tile, x, y int, idx byte) {
-	i := y*4 + x/2
-	if x&1 == 0 {
-		tb.Tiles[tile][i] = (tb.Tiles[tile][i] & 0x0F) | (idx << 4)
-	} else {
-		tb.Tiles[tile][i] = (tb.Tiles[tile][i] & 0xF0) | (idx & 0xF)
-	}
+	tb.Tiles[tile][y*TileSize+x] = idx
 }
 
 const (
@@ -85,33 +77,42 @@ func (tl *TileLayer) AddTile(worldX, worldY uint16, tileID, bankID, paletteID by
 // Clear resets the layer to zero active slots.
 func (tl *TileLayer) Clear() { tl.Count = 0 }
 
-// BlitTile copies an 8×8 tile from a TileBank onto the scratch buffer.
+// BlitTile copies an 16×16 tile from a TileBank onto the scratch buffer.
 // Pixels with alpha=0 in the palette are skipped (transparent).
 func BlitTile(bank *TileBank, tileID, sx, sy int, pal *[16][4]byte, scratch *[ScreenWidth * ScreenHeight * 4]byte) {
 	tile := &bank.Tiles[tileID]
-	for row := 0; row < 8; row++ {
+	// Speed up palette lookup by casting to uint32 pointers for BlendNormal case
+	palU32 := (*[16]uint32)(unsafe.Pointer(pal))
+
+	for row := 0; row < TileSize; row++ {
 		dy := sy + row
 		if dy < 0 || dy >= ScreenHeight {
 			continue
 		}
 		dstRow := dy * ScreenWidth
-		for col := 0; col < 8; col++ {
+		srcBase := row * TileSize
+
+		for col := 0; col < TileSize; col++ {
 			dx := sx + col
 			if dx < 0 || dx >= ScreenWidth {
 				continue
 			}
-			// Unpack nibble: high = even col, low = odd col
-			b := tile[row*4+col/2]
-			var nibble byte
-			if col&1 == 0 {
-				nibble = (b >> 4) & 0xF
-			} else {
-				nibble = b & 0xF
-			}
-			rgba := &pal[nibble]
 
+			colorIdx := tile[srcBase+col]
+			if colorIdx == 0 {
+				continue // 0 is always transparent
+			}
+
+			rgba := &pal[colorIdx]
 			dst := (dstRow + dx) * 4
-			ApplyBlend(scratch, dst, rgba)
+
+			if rgba[3] == BlendNormal {
+				// Fast path: direct uint32 copy
+				*(*uint32)(unsafe.Pointer(&scratch[dst])) = palU32[colorIdx]
+			} else {
+				// Slow path: manual alpha blending
+				ApplyBlend(scratch, dst, rgba)
+			}
 		}
 	}
 }

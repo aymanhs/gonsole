@@ -1,5 +1,7 @@
 package gonsole
 
+import "unsafe"
+
 const (
 	StampPropVisible     byte = 1 << 0 // draw this stamp
 	StampPropFlipH       byte = 1 << 1 // flip horizontally
@@ -38,54 +40,54 @@ func (c *Console) GetStamp(index int) Stamp {
 	return c.Stamps[index]
 }
 
-// SetSpriteData uploads 64 bytes of pixel data for sprite slot id (8×8, row-major)
-// and packs it into 32 bytes (4 bits per pixel).
+// SetSpriteData uploads 256 bytes of pixel data for sprite slot id (16×16, row-major).
 func (c *Console) SetSpriteData(id int, data []byte) {
-	if id < 0 || id >= 256 || len(data) != 64 {
+	if id < 0 || id >= 256 || len(data) != 256 {
 		return
 	}
-	for i := 0; i < 32; i++ {
-		// Pack two pixels into one byte
-		hi := data[i*2] & 0xF
-		lo := data[i*2+1] & 0xF
-		c.SpriteData[id][i] = (hi << 4) | lo
-	}
+	copy(c.SpriteData[id][:], data)
 }
 
-// BlitSprite copies an 8×8 sprite from legacy SpriteData onto the scratch buffer.
+// BlitSprite copies an 16×16 sprite from legacy SpriteData onto the scratch buffer.
 // Pixels with alpha=0 in the palette are skipped.
 func BlitSprite(data []byte, sx, sy int, props byte, pal *[16][4]byte, scratch *[ScreenWidth * ScreenHeight * 4]byte) {
-	for row := 0; row < 8; row++ {
+	palU32 := (*[16]uint32)(unsafe.Pointer(pal))
+
+	for row := 0; row < TileSize; row++ {
 		srcRow := row
 		if props&StampPropFlipV != 0 {
-			srcRow = 7 - row
+			srcRow = (TileSize - 1) - row
 		}
 		dy := sy + row
 		if dy < 0 || dy >= ScreenHeight {
 			continue
 		}
 		dstRow := dy * ScreenWidth
-		for col := 0; col < 8; col++ {
+		srcBase := srcRow * TileSize
+
+		for col := 0; col < TileSize; col++ {
 			srcCol := col
 			if props&StampPropFlipH != 0 {
-				srcCol = 7 - col
+				srcCol = (TileSize - 1) - col
 			}
 			dx := sx + col
 			if dx < 0 || dx >= ScreenWidth {
 				continue
 			}
-			// Unpack nibble: high = even col, low = odd col
-			b := data[srcRow*4+srcCol/2]
-			var colorIdx byte
-			if srcCol&1 == 0 {
-				colorIdx = (b >> 4) & 0xF
-			} else {
-				colorIdx = b & 0xF
-			}
-			rgba := &pal[colorIdx]
 
+			colorIdx := data[srcBase+srcCol]
+			if colorIdx == 0 {
+				continue
+			}
+
+			rgba := &pal[colorIdx]
 			dst := (dstRow + dx) * 4
-			ApplyBlend(scratch, dst, rgba)
+
+			if rgba[3] == BlendNormal {
+				*(*uint32)(unsafe.Pointer(&scratch[dst])) = palU32[colorIdx]
+			} else {
+				ApplyBlend(scratch, dst, rgba)
+			}
 		}
 	}
 }

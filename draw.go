@@ -3,6 +3,7 @@ package gonsole
 const (
 	ScreenWidth  = 640
 	ScreenHeight = 480
+	TileSize     = 16
 
 	TransparentColor = 0 // palette index reserved for transparency
 

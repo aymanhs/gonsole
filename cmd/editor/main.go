@@ -15,7 +15,7 @@ type EditorState struct {
 	pixelEditor    PixelEditor
 	tilemapEditor  TilemapEditor
 	fontEditor     FontEditor
-	clipboard      manip8x8
+	clipboard      manip16x16
 	colorClipboard [4]byte
 	bankClipboard  [16][4]byte
 }

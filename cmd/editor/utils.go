@@ -2,42 +2,45 @@ package main
 
 import "aymanhs/gonsole"
 
-// manip8x8 is a helper for 8x8 pixel manipulation
+// manip16x16 is a helper for 16x16 pixel manipulation
+type manip16x16 [16][16]byte
+
+// manip8x8 is a helper for 8x8 pixel manipulation (Fonts)
 type manip8x8 [8][8]byte
 
-func (m *manip8x8) shift(dx, dy int) {
-	var next manip8x8
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 8; x++ {
-			nx := (x + dx + 8) % 8
-			ny := (y + dy + 8) % 8
+func (m *manip16x16) shift(dx, dy int) {
+	var next manip16x16
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			nx := (x + dx + 16) % 16
+			ny := (y + dy + 16) % 16
 			next[ny][nx] = m[y][x]
 		}
 	}
 	*m = next
 }
 
-func (m *manip8x8) flipH() {
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 4; x++ {
-			m[y][x], m[y][7-x] = m[y][7-x], m[y][x]
-		}
-	}
-}
-
-func (m *manip8x8) flipV() {
-	for x := 0; x < 8; x++ {
-		for y := 0; y < 4; y++ {
-			m[y][x], m[7-y][x] = m[7-y][x], m[y][x]
-		}
-	}
-}
-
-func (m *manip8x8) rotate() {
-	var next manip8x8
-	for y := 0; y < 8; y++ {
+func (m *manip16x16) flipH() {
+	for y := 0; y < 16; y++ {
 		for x := 0; x < 8; x++ {
-			next[x][7-y] = m[y][x]
+			m[y][x], m[y][15-x] = m[y][15-x], m[y][x]
+		}
+	}
+}
+
+func (m *manip16x16) flipV() {
+	for x := 0; x < 16; x++ {
+		for y := 0; y < 8; y++ {
+			m[y][x], m[15-y][x] = m[15-y][x], m[y][x]
+		}
+	}
+}
+
+func (m *manip16x16) rotate() {
+	var next manip16x16
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			next[x][15-y] = m[y][x]
 		}
 	}
 	*m = next
@@ -45,29 +48,19 @@ func (m *manip8x8) rotate() {
 
 // Unpack Helpers
 
-func unpackNibble(src [32]byte) (m manip8x8) {
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 8; x++ {
-			b := src[y*4+x/2]
-			if x&1 == 0 {
-				m[y][x] = (b >> 4) & 0xF
-			} else {
-				m[y][x] = b & 0xF
-			}
+func unpackNibble(src [256]byte) (m manip16x16) {
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			m[y][x] = src[y*16+x]
 		}
 	}
 	return
 }
 
-func packNibble(m manip8x8) (dst [32]byte) {
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 8; x++ {
-			i := y*4 + x/2
-			if x&1 == 0 {
-				dst[i] = (dst[i] & 0x0F) | (m[y][x] << 4)
-			} else {
-				dst[i] = (dst[i] & 0xF0) | (m[y][x] & 0xF)
-			}
+func packNibble(m manip16x16) (dst [256]byte) {
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			dst[y*16+x] = m[y][x]
 		}
 	}
 	return

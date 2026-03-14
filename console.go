@@ -14,8 +14,8 @@ type Console struct {
 	// Palette and tile data
 	Palette     [16][3]byte // legacy direct palette (kept for SetPalette compat)
 	PaletteBank PaletteBank
-	SpriteData  [256][32]byte // 4-bit nibble-packed sprite pixel data (8×8)
-	TileBanks   [4]TileBank   // up to 4 tile banks (each 256 tiles × 8×8)
+	SpriteData  [256][256]byte // 1-byte per pixel sprite data (16×16)
+	TileBanks   [4]TileBank    // up to 4 tile banks (each 256 tiles × 16×16)
 	TileLayers  [TileLayerCount]TileLayer
 	FontData    [128][8]byte // 128 characters, each 8x8 (1 bit per pixel, 8 bytes total)
 
@@ -192,7 +192,7 @@ func (c *Console) drawTileLayer(layerIdx int) {
 		sy := int(slot.WorldY) - camY
 
 		// Cull tiles fully outside the screen
-		if sx+8 <= 0 || sx >= ScreenWidth || sy+8 <= 0 || sy >= ScreenHeight {
+		if sx+TileSize <= 0 || sx >= ScreenWidth || sy+TileSize <= 0 || sy >= ScreenHeight {
 			continue
 		}
 
@@ -216,7 +216,7 @@ func (c *Console) drawStampBucket(indices []byte) {
 		}
 
 		// Cull stamps fully outside the screen
-		if sx+8 <= 0 || sx >= ScreenWidth || sy+8 <= 0 || sy >= ScreenHeight {
+		if sx+TileSize <= 0 || sx >= ScreenWidth || sy+TileSize <= 0 || sy >= ScreenHeight {
 			continue
 		}
 

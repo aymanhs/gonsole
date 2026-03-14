@@ -37,25 +37,19 @@ func TestInputEdgeDetection(t *testing.T) {
 	}
 }
 
-func TestSpritePacking(t *testing.T) {
+func TestSpriteData(t *testing.T) {
 	c := NewConsole()
-	data := make([]byte, 64)
+	data := make([]byte, 256)
 	for i := range data {
 		data[i] = byte(i % 16)
 	}
 	
 	c.SetSpriteData(0, data)
 	
-	// Check packed data
-	for i := 0; i < 32; i++ {
-		b := c.SpriteData[0][i]
-		hi := (b >> 4) & 0xF
-		lo := b & 0xF
-		if hi != byte((i*2)%16) {
-			t.Errorf("Byte %d high nibble mismatch: got %d, want %d", i, hi, (i*2)%16)
-		}
-		if lo != byte((i*2+1)%16) {
-			t.Errorf("Byte %d low nibble mismatch: got %d, want %d", i, lo, (i*2+1)%16)
+	// Check storage (16x16 = 256 pixels = 256 bytes)
+	for i := 0; i < 256; i++ {
+		if c.SpriteData[0][i] != byte(i%16) {
+			t.Errorf("Byte %d mismatch: got %d, want %d", i, c.SpriteData[0][i], i%16)
 		}
 	}
 }

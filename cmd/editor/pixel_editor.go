@@ -21,48 +21,52 @@ type PixelEditor struct {
 	fontDrawMode  int // 0: none, 1: draw 1s, 2: draw 0s
 }
 
-func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) {
+func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip16x16) {
 	mx, my := c.MousePos()
 	cellSize := 16
+	gridSize := gonsole.TileSize
+	if e.targetType == 2 {
+		gridSize = 8
+	}
 
 	// Generic Manipulation Keys (H, V, R, Arrows)
 	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
-		e.manip(c, func(m *manip8x8) { m.flipH() })
+		e.manip16(c, func(m *manip16x16) { m.flipH() })
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyV) {
-		e.manip(c, func(m *manip8x8) { m.flipV() })
+		e.manip16(c, func(m *manip16x16) { m.flipV() })
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		e.manip(c, func(m *manip8x8) { m.rotate() })
+		e.manip16(c, func(m *manip16x16) { m.rotate() })
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		e.manip(c, func(m *manip8x8) { m.shift(0, -1) })
+		e.manip16(c, func(m *manip16x16) { m.shift(0, -1) })
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		e.manip(c, func(m *manip8x8) { m.shift(0, 1) })
+		e.manip16(c, func(m *manip16x16) { m.shift(0, 1) })
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		e.manip(c, func(m *manip8x8) { m.shift(-1, 0) })
+		e.manip16(c, func(m *manip16x16) { m.shift(-1, 0) })
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		e.manip(c, func(m *manip8x8) { m.shift(1, 0) })
+		e.manip16(c, func(m *manip16x16) { m.shift(1, 0) })
 	}
 
 	// Clipboard (Ctrl+C / Ctrl+V)
 	ctrl := ebiten.IsKeyPressed(ebiten.KeyControl)
 	if ctrl && inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		*clipboard = e.unpack(c)
+		*clipboard = e.unpack16(c)
 	}
 	if ctrl && inpututil.IsKeyJustPressed(ebiten.KeyV) {
-		e.pack(c, *clipboard)
+		e.pack16(c, *clipboard)
 	}
 
 	// Handle drawing on the grid (Sprite/Tile)
 	if e.targetType != 2 && c.MousePressed(gonsole.MouseButtonLeft) {
 		gx := (mx - x) / cellSize
 		gy := (my - y) / cellSize
-		if gx >= 0 && gx < 8 && gy >= 0 && gy < 8 {
+		if gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize {
 			switch e.targetType {
 			case 0: // Sprite
 				setSpritePixel(c, e.targetID, gx, gy, e.selectedColor)
@@ -77,7 +81,7 @@ func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) 
 		if c.JustPressedMouse(gonsole.MouseButtonLeft) {
 			gx := (mx - x) / cellSize
 			gy := (my - y) / cellSize
-			if gx >= 0 && gx < 8 && gy >= 0 && gy < 8 {
+			if gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize {
 				current := getFontPixel(c, e.targetID, gx, gy)
 				if current == 0 {
 					e.fontDrawMode = 1
@@ -94,7 +98,7 @@ func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) 
 		if e.fontDrawMode > 0 && c.MousePressed(gonsole.MouseButtonLeft) {
 			gx := (mx - x) / cellSize
 			gy := (my - y) / cellSize
-			if gx >= 0 && gx < 8 && gy >= 0 && gy < 8 {
+			if gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize {
 				if e.fontDrawMode == 1 {
 					setFontPixel(c, e.targetID, gx, gy, 1)
 				} else if e.fontDrawMode == 2 {
@@ -157,13 +161,17 @@ func (e *PixelEditor) Update(c *gonsole.Console, x, y int, clipboard *manip8x8) 
 
 func (e *PixelEditor) Draw(c *gonsole.Console, x, y int) {
 	cellSize := 16
+	gridSize := gonsole.TileSize
+	if e.targetType == 2 {
+		gridSize = 8
+	}
 
 	// Draw Background outline
-	c.DrawRect(x-1, y-1, 8*cellSize+2, 8*cellSize+2, 5, false)
+	c.DrawRect(x-1, y-1, gridSize*cellSize+2, gridSize*cellSize+2, 5, false)
 
 	// Draw Grid
-	for row := 0; row < 8; row++ {
-		for col := 0; col < 8; col++ {
+	for row := 0; row < gridSize; row++ {
+		for col := 0; col < gridSize; col++ {
 			var colorIdx byte
 			switch e.targetType {
 			case 0:
@@ -186,7 +194,7 @@ func (e *PixelEditor) Draw(c *gonsole.Console, x, y int) {
 	}
 
 	// Draw Palette (only for Sprite/Tile)
-	px, py := x, y+8*cellSize+10
+	px, py := x, y+gridSize*cellSize+10
 	if e.targetType != 2 {
 		for i := 0; i < 16; i++ {
 			cx := px + (i%8)*20
@@ -259,8 +267,8 @@ func (e *PixelEditor) Draw(c *gonsole.Console, x, y int) {
 				sBank := e.scratchBanks[idx]
 				sType := e.scratchTypes[idx]
 
-				for r := 0; r < 8; r++ {
-					for cIdx := 0; cIdx < 8; cIdx++ {
+				for r := 0; r < gonsole.TileSize; r++ {
+					for cIdx := 0; cIdx < gonsole.TileSize; cIdx++ {
 						var colIdx byte
 						if sType == 0 {
 							colIdx = getSpritePixel(c, sID, cIdx, r)
@@ -277,12 +285,6 @@ func (e *PixelEditor) Draw(c *gonsole.Console, x, y int) {
 	}
 
 	switch e.targetType {
-	case 0: // Sprite
-		pal := &c.PaletteBank.Colors[0]
-		gonsole.BlitSprite(c.SpriteData[e.targetID][:], px+181, py+1, 0, pal, &c.Scratch)
-	case 1: // Tile
-		pal := &c.PaletteBank.Colors[0]
-		gonsole.BlitTile(&c.TileBanks[e.targetBank], e.targetID, px+181, py+1, pal, &c.Scratch)
 	case 2: // Font
 		// Draw 1-bit font preview
 		for row := 0; row < 8; row++ {
@@ -293,54 +295,52 @@ func (e *PixelEditor) Draw(c *gonsole.Console, x, y int) {
 				}
 			}
 		}
+	case 0, 1:
+		pal := &c.PaletteBank.Colors[0]
+		if e.targetType == 0 {
+			gonsole.BlitSprite(c.SpriteData[e.targetID][:], px+181, py+1, 0, pal, &c.Scratch)
+		} else {
+			gonsole.BlitTile(&c.TileBanks[e.targetBank], e.targetID, px+181, py+1, pal, &c.Scratch)
+		}
 	}
 }
 
-func (e *PixelEditor) manip(c *gonsole.Console, f func(*manip8x8)) {
-	m := e.unpack(c)
+func (e *PixelEditor) manip16(c *gonsole.Console, f func(*manip16x16)) {
+	if e.targetType == 2 {
+		// handle font manipulation if needed, or skip
+		return
+	}
+	m := e.unpack16(c)
 	f(&m)
-	e.pack(c, m)
+	e.pack16(c, m)
 }
 
-func (e *PixelEditor) unpack(c *gonsole.Console) manip8x8 {
+func (e *PixelEditor) unpack16(c *gonsole.Console) manip16x16 {
 	switch e.targetType {
 	case 0: // Sprite
 		return unpackNibble(c.SpriteData[e.targetID])
 	case 1: // Tile
 		return unpackNibble(c.TileBanks[e.targetBank].Tiles[e.targetID])
-	case 2: // Font
-		return unpackBit(c.FontData[e.targetID])
 	}
-	return manip8x8{}
+	return manip16x16{}
 }
 
-func (e *PixelEditor) pack(c *gonsole.Console, m manip8x8) {
+func (e *PixelEditor) pack16(c *gonsole.Console, m manip16x16) {
 	switch e.targetType {
 	case 0: // Sprite
 		c.SpriteData[e.targetID] = packNibble(m)
 	case 1: // Tile
 		c.TileBanks[e.targetBank].Tiles[e.targetID] = packNibble(m)
-	case 2: // Font
-		c.FontData[e.targetID] = packBit(m)
 	}
 }
 
 // Helpers for SpriteData since gonsole only has SetSpriteData (bulk)
 func getSpritePixel(c *gonsole.Console, id, x, y int) byte {
-	b := c.SpriteData[id][y*4+x/2]
-	if x&1 == 0 {
-		return (b >> 4) & 0xF
-	}
-	return b & 0xF
+	return c.SpriteData[id][y*gonsole.TileSize+x]
 }
 
 func setSpritePixel(c *gonsole.Console, id, x, y int, colorIdx byte) {
-	i := y*4 + x/2
-	if x&1 == 0 {
-		c.SpriteData[id][i] = (c.SpriteData[id][i] & 0x0F) | (colorIdx << 4)
-	} else {
-		c.SpriteData[id][i] = (c.SpriteData[id][i] & 0xF0) | (colorIdx & 0xF)
-	}
+	c.SpriteData[id][y*gonsole.TileSize+x] = colorIdx
 }
 
 func getFontPixel(c *gonsole.Console, id, x, y int) byte {

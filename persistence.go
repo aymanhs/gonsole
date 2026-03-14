@@ -11,8 +11,8 @@ import (
 type Cartridge struct {
 	Version    int                  `json:"version"`
 	Palettes   map[string]string    `json:"palettes,omitempty"`    // Hex strings of [16][4]byte (pre-expanded)
-	TileBanks  map[string]string    `json:"tile_banks,omitempty"`  // Hex strings of [256][32]byte
-	SpriteData string               `json:"sprite_data,omitempty"` // Hex string of [256][32]byte
+	TileBanks  map[string]string    `json:"tile_banks,omitempty"`  // Hex strings of [256][256]byte
+	SpriteData string               `json:"sprite_data,omitempty"` // Hex string of [256][256]byte
 	TileLayers map[string]TileLayer `json:"tile_layers,omitempty"`
 	FontData   string               `json:"font_data,omitempty"` // Hex string of [128][8]byte
 }
@@ -225,31 +225,31 @@ func copyPalette(dst *[16][4]byte, src []byte) {
 	}
 }
 
-func flattenTileBank(t [256][32]byte) []byte {
-	out := make([]byte, 256*32)
+func flattenTileBank(t [256][256]byte) []byte {
+	out := make([]byte, 256*256)
 	for i := 0; i < 256; i++ {
-		copy(out[i*32:], t[i][:])
+		copy(out[i*256:], t[i][:])
 	}
 	return out
 }
 
-func copyTileBank(dst *[256][32]byte, src []byte) {
-	for i := 0; i < 256 && i*32+32 <= len(src); i++ {
-		copy(dst[i][:], src[i*32:i*32+32])
+func copyTileBank(dst *[256][256]byte, src []byte) {
+	for i := 0; i < 256 && i*256+256 <= len(src); i++ {
+		copy(dst[i][:], src[i*256:i*256+256])
 	}
 }
 
-func flattenSpriteData(s [256][32]byte) []byte {
-	out := make([]byte, 256*32)
+func flattenSpriteData(s [256][256]byte) []byte {
+	out := make([]byte, 256*256)
 	for i := 0; i < 256; i++ {
-		copy(out[i*32:], s[i][:])
+		copy(out[i*256:], s[i][:])
 	}
 	return out
 }
 
-func copySpriteData(dst *[256][32]byte, src []byte) {
-	for i := 0; i < 256 && i*32+32 <= len(src); i++ {
-		copy(dst[i][:], src[i*32:i*32+32])
+func copySpriteData(dst *[256][256]byte, src []byte) {
+	for i := 0; i < 256 && i*256+256 <= len(src); i++ {
+		copy(dst[i][:], src[i*256:i*256+256])
 	}
 }
 
