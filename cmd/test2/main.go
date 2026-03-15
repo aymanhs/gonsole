@@ -1,20 +1,24 @@
 package main
 
-import "aymanhs/gonsole"
+import (
+	"aymanhs/gonsole"
+	"math"
+)
 
 func main() {
 	c := gonsole.NewCon16(320, 240)
 
 	t0 := c.GetTile(0)
 
-	t0.Fill(0b10010100)
+	t0.Fill(0b01000001)
 
-	c.SetDrawFunc(func(slot int, frame uint64) {
-		// c.DisplayText(10, int(10+frame%240), "Hello, world!", 0b111111)
-		x := int(frame % 320)
-		y := int(frame % 240)
+	c.SetDrawFunc(func(slot int, frame int) {
+		x := c.CameraX + 120
+		y := 120 + int(100*math.Sin(float64(x)/320.0*math.Pi*2))
 		c.SetPixel(x, y, 0b111111)
-		c.DrawTile(x+10, y+10, 0)
+		c.DrawTile(frame, y+10, 0)
+		c.CameraX += 1
+		c.DrawLine(0, 0, 319, 239, byte(frame%64))
 	})
 
 	c.Run()

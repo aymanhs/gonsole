@@ -1,190 +1,167 @@
 package gonsole
 
-const (
-	ScreenWidth  = 640
-	ScreenHeight = 480
-	TileSize     = 16
-
-	TransparentColor = 0 // palette index reserved for transparency
-
-	// PaintSlot constants for PaintFunc — called between compositing steps.
-	PaintSlotBegin   = 0 // before any rendering
-	PaintSlotAfterL0 = 1 // after stamp layer 0 + tile layer 0
-	PaintSlotAfterL1 = 2 // after stamp layer 1 + tile layer 1
-	PaintSlotMid     = 3 // midpoint of the pipeline (between layer 1 and layer 2)
-	PaintSlotAfterL2 = 4 // after stamp layer 2 + tile layer 2
-	PaintSlotAfterL3 = 5 // after stamp layer 3 + tile layer 3
-	PaintSlotEnd     = 6 // after HUD stamps (layers 4–7), before GPU upload
-)
-
-// ApplyBlend applies the calculated blend mode values into the pixel byte array.
-func ApplyBlend(scratch *[ScreenWidth * ScreenHeight * 4]byte, dst int, rgba *[4]byte) {
-	blend := rgba[3]
-	if blend == BlendTransparent {
-		return // Skip rendering
-	}
-
-	if blend == BlendNormal {
-		scratch[dst] = rgba[0]
-		scratch[dst+1] = rgba[1]
-		scratch[dst+2] = rgba[2]
-		scratch[dst+3] = 255
-	} else if blend == BlendSubtract {
-		r := int(scratch[dst]) - int(rgba[0])
-		g := int(scratch[dst+1]) - int(rgba[1])
-		b := int(scratch[dst+2]) - int(rgba[2])
-		if r < 0 {
-			r = 0
-		}
-		if g < 0 {
-			g = 0
-		}
-		if b < 0 {
-			b = 0
-		}
-		scratch[dst] = byte(r)
-		scratch[dst+1] = byte(g)
-		scratch[dst+2] = byte(b)
-		scratch[dst+3] = 255
-	} else if blend == BlendAdd {
-		r := int(scratch[dst]) + int(rgba[0])
-		g := int(scratch[dst+1]) + int(rgba[1])
-		b := int(scratch[dst+2]) + int(rgba[2])
-		if r > 255 {
-			r = 255
-		}
-		if g > 255 {
-			g = 255
-		}
-		if b > 255 {
-			b = 255
-		}
-		scratch[dst] = byte(r)
-		scratch[dst+1] = byte(g)
-		scratch[dst+2] = byte(b)
-		scratch[dst+3] = 255
-	}
-}
-
-// SetPixel writes a palette color index at screen-space (x, y) directly into
-// the scratch buffer. Call from inside PaintFunc; the slot determines where in
-// the compositing order the pixel lands.
-func (c *Console) SetPixel(x, y int, colorIdx byte) {
-	if x < 0 || x >= ScreenWidth || y < 0 || y >= ScreenHeight {
+// SetPixel sets a pixel at (x, y) as World coordinates, applying the camera offset and blending mode from the color byte
+func (c *Con16) SetPixel(x, y int, color byte) {
+	x -= int(c.CameraX)
+	y -= int(c.CameraY)
+	if x < 0 || x >= c.screenWidth || y < 0 || y >= c.screenHeight {
 		return
 	}
-	rgba := &c.PaletteBank.Colors[c.FramePaletteID][colorIdx&0xF]
-	ApplyBlend(&c.Scratch, (y*ScreenWidth+x)*4, rgba)
+	index := (y*c.screenWidth + x)
+	blendMode := ((color & 0xC0) >> 6) & 0x03
+	colorIndex := color & 0x3F
+	switch blendMode {
+	case 0: // Normal
+		c.frameBuffer32[index] = c.colorMap[colorIndex]
+	case 1: // Additive blending
+		newColor := c.colorMap[colorIndex]
+		index = index << 2                                                                            // Convert pixel index to byte index for RGBA
+		c.frameBuffer[index+0] = byte(min(int(c.frameBuffer[index+0])+int((newColor>>0)&0xFF), 255))  // R
+		c.frameBuffer[index+1] = byte(min(int(c.frameBuffer[index+1])+int((newColor>>8)&0xFF), 255))  // G
+		c.frameBuffer[index+2] = byte(min(int(c.frameBuffer[index+2])+int((newColor>>16)&0xFF), 255)) // B
+	case 2: // Subtractive blending
+		newColor := c.colorMap[colorIndex]
+		index = index << 2                                                                          // Convert pixel index to byte index for RGBA
+		c.frameBuffer[index+0] = byte(max(int(c.frameBuffer[index+0])-int((newColor>>0)&0xFF), 0))  // R
+		c.frameBuffer[index+1] = byte(max(int(c.frameBuffer[index+1])-int((newColor>>8)&0xFF), 0))  // G
+		c.frameBuffer[index+2] = byte(max(int(c.frameBuffer[index+2])-int((newColor>>16)&0xFF), 0)) // B
+	case 3: // transparent, skip update
+		return
+	}
 }
 
-// DrawLine draws a line using Bresenham's algorithm.
-func (c *Console) DrawLine(x1, y1, x2, y2 int, colorIdx byte) {
-	dx := abs(x2 - x1)
-	dy := -abs(y2 - y1)
-	sx := 1
-	if x1 >= x2 {
-		sx = -1
+// DrawLine draws a line from (x1, y1) to (x2, y2) in World coordinates using Bresenham's algorithm,
+// It is optimized to only call SetPixel for pixels that are actually on-screen
+func (c *Con16) DrawLine(x1, y1, x2, y2 int, color byte) {
+	// Cohen-Sutherland clipping region codes
+	const (
+		INSIDE = 0
+		LEFT   = 1
+		RIGHT  = 2
+		BOTTOM = 4
+		TOP    = 8
+	)
+
+	xmin, ymin := c.CameraX, c.CameraY
+	xmax, ymax := c.CameraX+c.screenWidth-1, c.CameraY+c.screenHeight-1
+
+	computeOutCode := func(x, y int) int {
+		code := INSIDE
+		if x < xmin {
+			code |= LEFT
+		} else if x > xmax {
+			code |= RIGHT
+		}
+		if y < ymin {
+			code |= TOP
+		} else if y > ymax {
+			code |= BOTTOM
+		}
+		return code
 	}
-	sy := 1
-	if y1 >= y2 {
-		sy = -1
-	}
-	err := dx + dy
+
+	outcode0 := computeOutCode(x1, y1)
+	outcode1 := computeOutCode(x2, y2)
+	accept := false
 
 	for {
-		c.SetPixel(x1, y1, colorIdx)
+		if outcode0|outcode1 == 0 {
+			// both points inside window; trivially accept
+			accept = true
+			break
+		} else if outcode0&outcode1 != 0 {
+			// both points share an outside zone (trivially reject)
+			break
+		} else {
+			var x, y int
+			outcodeOut := outcode1
+			if outcode0 > outcode1 {
+				outcodeOut = outcode0
+			}
+
+			// Find intersection point. Use float64 to prevent integer division truncation errors.
+			if outcodeOut&TOP != 0 {
+				x = x1 + int(float64(x2-x1)*float64(ymin-y1)/float64(y2-y1))
+				y = ymin
+			} else if outcodeOut&BOTTOM != 0 {
+				x = x1 + int(float64(x2-x1)*float64(ymax-y1)/float64(y2-y1))
+				y = ymax
+			} else if outcodeOut&RIGHT != 0 {
+				y = y1 + int(float64(y2-y1)*float64(xmax-x1)/float64(x2-x1))
+				x = xmax
+			} else if outcodeOut&LEFT != 0 {
+				y = y1 + int(float64(y2-y1)*float64(xmin-x1)/float64(x2-x1))
+				x = xmin
+			}
+
+			if outcodeOut == outcode0 {
+				x1, y1 = x, y
+				outcode0 = computeOutCode(x1, y1)
+			} else {
+				x2, y2 = x, y
+				outcode1 = computeOutCode(x2, y2)
+			}
+		}
+	}
+
+	if !accept {
+		return // Line is completely off-screen
+	}
+
+	dx := abs(x2 - x1)
+	dy := abs(y2 - y1)
+	sx := 1
+	sy := 1
+	if x1 > x2 {
+		sx = -1
+	}
+	if y1 > y2 {
+		sy = -1
+	}
+	err := dx - dy
+
+	for {
+		c.SetPixel(x1, y1, color)
 		if x1 == x2 && y1 == y2 {
 			break
 		}
-		e2 := 2 * err
-		if e2 >= dy {
-			err += dy
+		err2 := err * 2
+		if err2 > -dy {
+			err -= dy
 			x1 += sx
 		}
-		if e2 <= dx {
+		if err2 < dx {
 			err += dx
 			y1 += sy
 		}
 	}
 }
 
-// DrawRect draws a filled or outlined rectangle.
-func (c *Console) DrawRect(x, y, w, h int, colorIdx byte, filled bool) {
-	if filled {
-		for i := 0; i < h; i++ {
-			for j := 0; j < w; j++ {
-				c.SetPixel(x+j, y+i, colorIdx)
-			}
-		}
-	} else {
-		c.DrawLine(x, y, x+w-1, y, colorIdx)
-		c.DrawLine(x, y+h-1, x+w-1, y+h-1, colorIdx)
-		c.DrawLine(x, y, x, y+h-1, colorIdx)
-		c.DrawLine(x+w-1, y, x+w-1, y+h-1, colorIdx)
+func (c *Con16) DrawRect(x1, y1, x2, y2 int, color byte) {
+	// DrawLine is our most optimized drawing function, so we can use it to draw rectangles by drawing 4 lines
+	c.DrawLine(x1, y1, x2, y1, color)
+	c.DrawLine(x1, y2, x2, y2, color)
+	c.DrawLine(x1, y1, x1, y2, color)
+	c.DrawLine(x2, y1, x2, y2, color)
+}
+
+func (c *Con16) FillRect(x1, y1, x2, y2 int, color byte) {
+	for y := y1; y <= y2; y++ {
+		c.DrawLine(x1, y, x2, y, color)
 	}
 }
 
-// DrawCircle draws a filled or outlined circle using the midpoint algorithm.
-func (c *Console) DrawCircle(xc, yc, r int, colorIdx byte, filled bool) {
-	x := 0
-	y := r
-	d := 3 - 2*r
-
-	drawPoints := func(xc, yc, x, y int) {
-		if filled {
-			c.DrawLine(xc-x, yc+y, xc+x, yc+y, colorIdx)
-			c.DrawLine(xc-x, yc-y, xc+x, yc-y, colorIdx)
-			c.DrawLine(xc-y, yc+x, xc+y, yc+x, colorIdx)
-			c.DrawLine(xc-y, yc-x, xc+y, yc-x, colorIdx)
-		} else {
-			c.SetPixel(xc+x, yc+y, colorIdx)
-			c.SetPixel(xc-x, yc+y, colorIdx)
-			c.SetPixel(xc+x, yc-y, colorIdx)
-			c.SetPixel(xc-x, yc-y, colorIdx)
-			c.SetPixel(xc+y, yc+x, colorIdx)
-			c.SetPixel(xc-y, yc+x, colorIdx)
-			c.SetPixel(xc+y, yc-x, colorIdx)
-			c.SetPixel(xc-y, yc-x, colorIdx)
-		}
-	}
-
-	for y >= x {
-		drawPoints(xc, yc, x, y)
-		x++
-		if d > 0 {
-			y--
-			d = d + 4*(x-y) + 10
-		} else {
-			d = d + 4*x + 6
-		}
+func (c *Con16) ClearScreen(color byte) {
+	colorIndex := color & 0x3F
+	for i := range c.frameBuffer32 {
+		c.frameBuffer32[i] = c.colorMap[colorIndex]
 	}
 }
 
-// DrawText draws a string at screen-space (x, y) using the built-in ebiten
-// debug font (6×16px, white). Safe to call from PaintFunc at any slot.
-// Text is drawn onto screenImg after scratch is uploaded to the GPU, so it
-// always appears on top regardless of which slot PaintFunc calls it from.
-func (c *Console) DrawText(x, y int, text string) {
-	c.pendingTexts = append(c.pendingTexts, textDraw{x, y, text})
-}
-
-// DrawCustomText draws a string using the Console's internal FontData.
-// Safe to call from PaintFunc; writes directly into the scratch buffer.
-func (c *Console) DrawCustomText(x, y int, text string, paletteID byte) {
-	for i, r := range text {
-		if r > 127 {
-			r = '?'
-		}
-		charData := c.FontData[r]
-		for row := 0; row < 8; row++ {
-			b := charData[row]
-			for col := 0; col < 8; col++ {
-				if (b>>(7-col))&1 != 0 {
-					c.SetPixel(x+i*8+col, y+row, 1) // Default to color 1? Or from palette?
-					// Actually, let's use the provided paletteID color at index 7 (usually white)
-					c.SetPixel(x+i*8+col, y+row, 7)
-				}
-			}
+func (t *Tile) FillRect(x, y, w, h int, color byte) {
+	for j := 0; j < h; j++ {
+		for i := 0; i < w; i++ {
+			t.SetPixel(x+i, y+j, color)
 		}
 	}
 }

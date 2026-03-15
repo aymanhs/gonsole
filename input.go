@@ -1,48 +1,46 @@
 package gonsole
 
-import "github.com/hajimehoshi/ebiten/v2"
-
-const (
-	ButtonUp     = 1 << 0
-	ButtonDown   = 1 << 1
-	ButtonLeft   = 1 << 2
-	ButtonRight  = 1 << 3
-	ButtonA      = 1 << 4
-	ButtonB      = 1 << 5
-	ButtonStart  = 1 << 6
-	ButtonSelect = 1 << 7
+import (
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-func (c *Console) pollInputs() {
-	c.prevButtons = c.Buttons
-	var b byte
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
-		b |= ButtonUp
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
-		b |= ButtonDown
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		b |= ButtonLeft
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		b |= ButtonRight
-	}
-	if ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyJ) {
-		b |= ButtonA
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeyK) {
-		b |= ButtonB
-	}
-	c.Buttons = b
+// KeyPressed returns true if the specified key is currently pressed.
+func KeyPressed(key ebiten.Key) bool {
+	return ebiten.IsKeyPressed(key)
 }
 
-// IsPressed returns true if the given button is currently held.
-func (c *Console) IsPressed(btn byte) bool {
-	return c.Buttons&btn != 0
+// KeyJustPressed returns true if the specified key was just pressed in the current frame.
+func KeyJustPressed(key ebiten.Key) bool {
+	return inpututil.IsKeyJustPressed(key)
 }
 
-// JustPressed returns true only on the frame the button was first pressed.
-func (c *Console) JustPressed(btn byte) bool {
-	return (c.Buttons&btn != 0) && (c.prevButtons&btn == 0)
+// KeyJustReleased returns true if the specified key was just released in the current frame.
+func KeyJustReleased(key ebiten.Key) bool {
+	return inpututil.IsKeyJustReleased(key)
+}
+
+// MouseButtonPressed returns true if the specified mouse button is currently pressed.
+func MouseButtonPressed(button ebiten.MouseButton) bool {
+	return ebiten.IsMouseButtonPressed(button)
+}
+
+// MouseButtonJustPressed returns true if the specified mouse button was just pressed in the current frame.
+func MouseButtonJustPressed(button ebiten.MouseButton) bool {
+	return inpututil.IsMouseButtonJustPressed(button)
+}
+
+// MouseButtonJustReleased returns true if the specified mouse button was just released in the current frame.
+func MouseButtonJustReleased(button ebiten.MouseButton) bool {
+	return inpututil.IsMouseButtonJustReleased(button)
+}
+
+// CursorPosition returns the current cursor (mouse) position coordinates.
+func CursorPosition() (int, int) {
+	return ebiten.CursorPosition()
+}
+
+// Wheel returns the x and y offsets of the mouse wheel scrolling.
+func Wheel() (float64, float64) {
+	return ebiten.Wheel()
 }
