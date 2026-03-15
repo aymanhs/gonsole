@@ -7,8 +7,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-var selectedColor byte = 0
-
 // EditorComponent defines a simple interface for UI objects that manage their own input and rendering.
 type EditorComponent interface {
 	HandleInput(con *gonsole.Con16)
@@ -28,7 +26,7 @@ func (t *TileDisplay) HandleInput(con *gonsole.Con16) {
 		if mouseX >= t.X && mouseX < t.X+(16*5) && mouseY >= t.Y && mouseY < t.Y+(16*5) {
 			col := (mouseX - t.X) / 5
 			row := (mouseY - t.Y) / 5
-			con.GetTile(t.TileIndex).SetPixel(col, row, selectedColor)
+			con.GetTile(t.TileIndex).SetPixel(col, row, palette.selectedColor)
 		}
 	}
 }
@@ -50,9 +48,12 @@ func (t *TileDisplay) Draw(con *gonsole.Con16) {
 
 // PaletteDisplay handles drawing the color grid and selecting colors.
 type PaletteDisplay struct {
-	X int
-	Y int
+	X             int
+	Y             int
+	selectedColor byte
 }
+
+var palette = &PaletteDisplay{X: 20, Y: 120}
 
 func (p *PaletteDisplay) HandleInput(con *gonsole.Con16) {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
@@ -60,7 +61,15 @@ func (p *PaletteDisplay) HandleInput(con *gonsole.Con16) {
 		if mouseX >= p.X && mouseX < p.X+(16*5) && mouseY >= p.Y && mouseY < p.Y+(4*5) {
 			col := (mouseX - p.X) / 5
 			row := (mouseY - p.Y) / 5
-			selectedColor = byte(row*16 + col)
+			// save the selected color index in the lower 6 bits, and keep the blend mode in the upper 2 bits
+			p.selectedColor = (p.selectedColor & 0xC0) | byte(row*16+col)
+		}
+		// check if one of the blend mode options was clicked
+		if mouseX >= p.X && mouseX < p.X+(20*4) && mouseY >= p.Y+25 && mouseY < p.Y+25+10 {
+			col := (mouseX - p.X) / 21 // 20 for the box + 1 for spacing
+			if col < 4 {
+				p.selectedColor = (p.selectedColor & 0x3F) | (byte(col) << 6)
+			}
 		}
 	}
 }
@@ -71,7 +80,7 @@ func (p *PaletteDisplay) Draw(con *gonsole.Con16) {
 	s := 4
 	for i := 0; i < 64; i++ {
 		con.FillRect(sx, sy, sx+s-1, sy+s-1, byte(i))
-		if byte(i) == selectedColor {
+		if byte(i) == (p.selectedColor & 0x3F) {
 			con.DrawRect(sx-1, sy-1, sx+s, sy+s, 63)
 		}
 
@@ -81,6 +90,17 @@ func (p *PaletteDisplay) Draw(con *gonsole.Con16) {
 			sy += s + 1
 		}
 	}
+	// draw the blend mode options below the palette
+	sx = p.X
+	sy = p.Y + 25
+	mode := int(p.selectedColor>>6) & 0x03
+	for i := 0; i < 4; i++ {
+		con.FillRect(sx, sy, sx+15, sy+10, byte(64+i))
+		if i == mode {
+			con.DrawRect(sx-1, sy-1, sx+15, sy+10, 63)
+		}
+		sx += 20 + 1
+	}
 }
 
 func main() {
@@ -89,7 +109,22 @@ func main() {
 
 	components := []EditorComponent{
 		&TileDisplay{X: 20, Y: 20, TileIndex: 0},
-		&PaletteDisplay{X: 20, Y: 120},
+		palette,
+		&ToggleButton{X: 250, Y: 120, Width: 100, Height: 20, Text: "Show Grid", Value: false},
+		&RadioGroup{
+			X: 250, Y: 160,
+			Width: 100, Height: 20,
+			Options:       []string{"Pencil tool", "Fill tool", "Select tool"},
+			SelectedIndex: 0,
+			IsVertical:    true,
+		},
+		&RadioGroup{
+			X: 250, Y: 240,
+			Width: 60, Height: 20,
+			Options:       []string{"1x", "2x", "4x"},
+			SelectedIndex: 0,
+			IsVertical:    false,
+		},
 	}
 
 	c.SetUpdateFunc(func(frame, ms int) error {
